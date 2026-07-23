@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Box + Cursor Timeline Animator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+<link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+
+<div style = "display: flex; flex-direction: column; ">
+
+<div id="sketch-holder">
+  <div id="canvas-container"></div>
+
+  <div id="ui-container">
+      <div>
+         <h2>Animation</h2>
+        <hr/>
+        <div style = "display: flex; flex-direction: row; gap : 4px;">
+            <div>
+                <div style="display: flex; flex-direction: row; align-items: center; gap : 4px;">
+                    <h3>Box</h3>
+                    <div class="preset-btn-row">
+                        <button id="btnApplyBox">Apply</button>
+                        <button id="btnResetBox">Reset</button>
+                    </div>
+                </div>
+                <div style = "display: flex; flex-direction: row; gap : 4px;">
+                    <div id="boxStepBtnContainer"></div>
+                    <textarea id="txtBoxPreset"></textarea>
+                </div>
+            </div>
+            <div>
+                <div style="display: flex; flex-direction: row; align-items: center; gap : 4px;">
+                    <h3>Cursor</h3>
+                    <div class="preset-btn-row">
+                        <button id="btnApplyCursor">Apply</button>
+                        <button id="btnResetCursor">Reset</button>
+                    </div>
+                </div>
+                <div style = "display: flex; flex-direction: row; gap : 4px;">
+                    <div id="cursorStepBtnContainer"></div>
+                    <textarea id="txtCursorPresets"></textarea>
+                </div>
+            </div>
+        </div>
+      </div>
+      <div>
+        <h2>Parameters</h2>
+        <div style = "display: flex; flex-direction: row; ">
+            <div>
+                <div class = "component">
+                    <div class = "chip">component</div>
+                    <h3 class = "componentName">Button</h3>
+                </div>
+                <div class = "chunk">
+                    <h3>Text</h3>
+                    <div>
+                        <p>Text</p>
+                        <input type="text" id="txtInput" value="Button" />
+                    </div>
+                    <div style = "display: flex; flex-direction: row; align-items: center; gap : 2px; padding : 4px;">
+                        <p>Color</p>
+                        <div style = "display: flex; flex-direction: row; align-items: center; gap : 2px;">
+                            <input type="color" id="colorPicker" value="#FFFFFF" />
+                            <input type="text" id="txtInput" value="FFFFFF" />
+                        </div>
+                    </div>
+                    <div>
+                        <p>Style</p>
+                        <select id="selFont">
+                            <option value="Arial">Roboto</option>
+                        </select>
+                    </div>
+                </div>
+                <div class = "chunk">
+                    <h3>Light</h3>
+                    <div>
+                        <p>X Position</p>
+                        <input type="range" id="sldLightX" min="-600" max="600" value="-300" />
+                    </div>
+                    <div>
+                        <p>Y Position</p>
+                        <input type="range" id="sldLightY" min="-600" max="600" value="350" />
+                    </div>
+                    <div>
+                        <p>Intensity</p>
+                        <input type="range" id="sldIntensity" min="0" max="500" value="235" />
+                    </div>
+      
+                    <div>
+                        <p>Show Path</p>
+                        <input type="checkbox" id="chkVisualize" />
+                    </div>
+                </div>
+                <div class = "chunk">
+                    <h3>Easing</h3>
+                    <div>
+                        <p>Curve</p>
+                        <select id="selEasing">
+                            <option value="Smooth">Smooth</option>
+                            <option value="Snappy">Snappy</option>
+                            <option value="Elastic">Elastic</option>
+                            <option value="Overshoot">Overshoot</option>
+                            <option value="Bounce">Bounce</option>
+                            <option value="Linear">Linear</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <div class = "component">
+                    <div class = "chip">component</div>
+                    <h3 class = "componentName">Cursor</h3>
+                </div>
+      
+                <div class = "chunk">
+                    <div>
+                        <p>Show Path</p>
+                        <input type="checkbox" id="chkShowPath" />
+                    </div>
+                </div>
+            </div>
+        </div>
+      
+      </div>
+  </div>
+
+
+    <div id="editors-row">
+      <div class="preset-col" id="box-col">
+        <div id="boxPresetErrorDiv" class="preset-error"></div>
+      </div>
+
+      <div class="preset-col" id="cursor-col">
+        <div id="cursorPresetErrorDiv" class="preset-error"></div>
+      </div>
+    </div>
+
+</div>
+
+<div class = "timeline">
+    <button id="btnAnim">Play</button>
+    <div id="timelineContainerDiv"></div>
+</div>
+
+</div>
+
+<script src="boxPresets.js"></script>
+<script src="cursorPresets.js"></script>
+<script src="sketch.js"></script>
+</body>
+</html>

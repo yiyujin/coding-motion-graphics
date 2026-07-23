@@ -1,0 +1,249 @@
+:root {
+  --black4: rgba(0,0,0,0.04);
+  --black8: rgba(0,0,0,0.08);
+  --black16: rgba(0,0,0,0.16);
+  --black40: rgba(0,0,0,0.4);
+  --black80: rgba(0,0,0,0.8);
+}
+
+
+/* DEBUG */
+* {
+  /* border : 1px solid rgba(255,0,0,0.1); */
+
+  color : #1b1b1b;
+
+  margin: 0;
+  padding: 0;
+
+  box-sizing: border-box;
+
+  /* border-radius : 4px; */
+
+  font-weight : 500;
+
+  line-height : 1.2;
+
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+#sketch-holder {
+  display: flex;
+  flex-direction: row;
+
+  width : 100vw;
+  height : 100vh;
+
+  gap : 8px;
+
+  overflow-x : scroll;
+}
+
+#canvas-container {
+  width: 600px;
+  height: 600px;
+  /* scale : 0.75; */
+  /* transform-origin : top left; */
+}
+
+canvas {
+  display: block;
+}
+
+/* ELEMENTS */
+p {
+  font-size : 12px;
+  color : rgba(0,0,0,0.4);
+}
+
+h2 {
+font-size : 18px;
+}
+
+h3 {
+  font-size : 14px;
+}
+
+/* button {
+height : 40px;
+min-width : 40px;
+padding : 0px 8px;
+
+background : var(--black4);
+border : 1px solid var(--black16);
+} */
+
+button:hover {
+opacity : 0.5;
+}
+
+input[type="text"] {
+  padding : 4px 8px;
+  border : 1px solid var(--black16);
+}
+
+select {
+border : 1px solid var(--black16);
+}
+
+input[type="text"]:focus {
+/* border-color: #007bff;
+box-shadow: 0 0 5px rgba(0, 123, 255, 0.5); */
+}
+
+input[type="checkbox"] {
+  border : 1px solid red; 
+  width : 100px;
+}
+
+input[type="color"] {
+background: none;
+border : none;
+padding : 0;
+}
+
+#ui-container {
+  background: #F2F1F3;
+  
+  display : flex;
+  flex-direction : row;
+
+  overflow : scroll;
+  
+}
+
+#editors-row {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  align-items: flex-start;
+}
+.preset-col {
+  flex: 0 0 auto;
+}
+.preset-desc {
+  max-width: 460px;
+}
+#cursor-col .preset-desc {
+  max-width: 480px;
+}
+#txtBoxPreset {
+  width: 460px;
+  height: 220px;
+  font-family: monospace;
+  font-size: 11px;
+  box-sizing: border-box;
+}
+#txtCursorPresets {
+  width: 480px;
+  height: 220px;
+  font-family: monospace;
+  font-size: 11px;
+  box-sizing: border-box;
+}
+
+.preset-error {
+  color: #ff6b6b;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+#boxPresetErrorDiv, .preset-desc.box-desc {
+  max-width: 460px;
+}
+#cursorPresetErrorDiv {
+  max-width: 480px;
+}
+
+.timeline {
+  background : #F2F1F3;
+
+  position : fixed;
+  bottom : 0;
+
+  width : 100vw;
+
+  padding : 8px 16px; 
+}
+
+#btnAnim {
+  width : 100%;
+  height : 28px;
+
+  border : 1px solid var(--black8);
+
+  margin-bottom : 8px;
+}
+
+.chunk {
+  background : white;
+  border : 1px solid var(--black16);
+
+  display : flex;
+  flex-direction : column;
+  gap : 8px;
+
+  padding : 12px 8px;
+
+  margin-bottom : 8px;
+}
+
+.chunk>div {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+
+  gap : 8px;
+}
+
+.chunk > div > p:first-child {
+  width : 80px;
+}
+
+.chunk > div input,
+.chunk > div select {
+  flex-grow: 1;        /* Tells the input to fill the rest of the row */
+  width: 100%;
+  
+  height : 24px;
+  width : 80px;
+  
+}
+
+
+.chip {
+  background : var(--black8);
+  color : var(--black40);
+  font-size : 10px;
+  padding : 2px 4px;
+  border-radius : 4px;
+}
+
+.component {
+display : flex;
+flex-direction : column;
+gap : 4px;
+
+margin-bottom : 8px;
+}
+
+
+
+
+/* 2. Remove the inner wrapper border (WebKit) */
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border: 1px solid var(--black16);
+  border-radius: 4px;
+  
+}
+
+/* 3. Remove the inner swatch border (WebKit) */
+input[type="color"]::-webkit-color-swatch {
+  border : none;
+  border-radius: 4px;
+}
+
+#txtBoxPreset, #txtCursorPresets {
+width : 200px;
+height : 80vh;
+}
