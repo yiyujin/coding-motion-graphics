@@ -1,4 +1,5 @@
-const initialCursorPresets = [
+const initialCursorPresets =
+[
   {
     "id": 1,
     "pathIndex": 0,
@@ -19,7 +20,7 @@ const initialCursorPresets = [
     "rotX": 0,
     "rotY": 0,
     "rotZ": 0,
-    "ms": 300,
+    "ms": 350,
     "hold": 0,
     "cameraZoom": false
   },
@@ -27,19 +28,19 @@ const initialCursorPresets = [
     "id": 3,
     "pathIndex": 130,
     "scale": 3,
-    "angleTwist": -1.5,
+    "angleTwist": -1.2,
     "rotX": 0,
     "rotY": 0,
     "rotZ": 0,
-    "ms": 300,
+    "ms": 250,
     "hold": 0,
     "cameraZoom": false
   },
   {
     "id": 4,
     "pathIndex": 130,
-    "scale": 3,
-    "angleTwist": -1.5,
+    "scale": 2,
+    "angleTwist": -1.2,
     "rotX": 0,
     "rotY": 0,
     "rotZ": 0,
@@ -51,7 +52,31 @@ const initialCursorPresets = [
     "id": 5,
     "pathIndex": 130,
     "scale": 3,
-    "angleTwist": -1.5,
+    "angleTwist": -1.2,
+    "rotX": 0,
+    "rotY": 0,
+    "rotZ": 0,
+    "ms": 50,
+    "hold": 0,
+    "cameraZoom": false
+  },
+  {
+    "id": 5,
+    "pathIndex": 130,
+    "scale": 4,
+    "angleTwist": -1.2,
+    "rotX": 0,
+    "rotY": 0,
+    "rotZ": 0, 
+    "ms": 300,
+    "hold": 0,
+    "cameraZoom": true
+  },
+  {
+    "id": 5,
+    "pathIndex": 130,
+    "scale": 4,
+    "angleTwist": -1.2,
     "rotX": 0,
     "rotY": 0,
     "rotZ": 0,

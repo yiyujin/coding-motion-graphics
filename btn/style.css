@@ -127,16 +127,17 @@ padding : 0;
 #cursor-col .preset-desc {
   max-width: 480px;
 }
+
 #txtBoxPreset {
-  width: 460px;
-  height: 220px;
+  width: 480px;
+  
   font-family: monospace;
   font-size: 11px;
   box-sizing: border-box;
 }
 #txtCursorPresets {
   width: 480px;
-  height: 220px;
+  
   font-family: monospace;
   font-size: 11px;
   box-sizing: border-box;
@@ -245,5 +246,5 @@ input[type="color"]::-webkit-color-swatch {
 
 #txtBoxPreset, #txtCursorPresets {
 width : 200px;
-height : 80vh;
+height : 70vh;
 }

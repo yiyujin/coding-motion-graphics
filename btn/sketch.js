@@ -56,7 +56,9 @@ let initialBoxPresetJson = [];
 let rawCursorPresets = [];
 
 const cw = 7, cyy = 16, cw2 = 1.5;
-const CURSOR_POINTS = [
+
+// CURSORTYPE1
+CURSOR_POINTS = [
   { x: 0, y: 0 },
   { x: cw, y: cyy },
   { x: cw2, y: cyy - cw2 },
@@ -65,6 +67,16 @@ const CURSOR_POINTS = [
   { x: -cw2, y: cyy - cw2 },
   { x: -cw, y: cyy },
 ];
+
+// CURSORTYPE2
+
+CURSOR_POINTS = [
+  { x: 0,  y: 0  },
+  { x: cw,  y: cyy },
+  {x : 0, y : cyy - 3 },
+  { x: -cw, y: cyy }
+];
+
 let CURSOR_TIP_ANGLE;
 
 let txtInputEl, sldLightXEl, sldLightYEl, sldIntensityEl, colorPickerEl, chkVisualizeEl, chkShowPathEl;
@@ -91,6 +103,21 @@ function getShapeTipAngle(points) {
 function lerpAngle(current, target, amt) {
   let diff = ((((target - current + PI) % TWO_PI) + TWO_PI) % TWO_PI) - PI;
   return current + diff * amt;
+}
+
+// Local tangent of the master path around a given path index. Used so that
+// a cursor sitting still at one pathIndex (e.g. several presets in a row
+// with the same pathIndex, only scale/twist changing) still faces the
+// direction the path was heading when it arrived there, instead of falling
+// back to a meaningless default angle. This matters most for scrubbing and
+// thumbnails, where the angle-smoothing ref gets reset to null and so has
+// no memory of "which way it was already facing" the way live playback does.
+const DIR_LOOKAHEAD = 4;
+function pathTangentAt(pathIndex) {
+  if (masterPath.length === 0) return { dx: 0, dy: 0 };
+  let behind = masterPath[constrain(pathIndex - DIR_LOOKAHEAD, 0, masterPath.length - 1)];
+  let ahead = masterPath[constrain(pathIndex + DIR_LOOKAHEAD, 0, masterPath.length - 1)];
+  return { dx: ahead.x - behind.x, dy: ahead.y - behind.y };
 }
 
 function normalizeBoxPreset(p) {
@@ -134,6 +161,86 @@ function buildCursorPresetsFromRaw(raw) {
     let pt = masterPath[pathIndex] || { x: 0, y: 0 };
     return { ...norm, pathIndex, x: pt.x, y: pt.y };
   });
+}
+
+// A "run" is a maximal chain of consecutive presets connected by hold === 0
+// on the *arriving* preset. Easing is applied once across the whole run,
+// not per-segment, so waypoints in the middle of a run don't decelerate to zero.
+function computeCursorRuns(presetArr) {
+  let runs = [];
+  let i = 0;
+  while (i < presetArr.length - 1) {
+    let start = i;
+    let totalMs = 0;
+    while (i < presetArr.length - 1) {
+      totalMs += presetArr[i + 1].ms;
+      i++;
+      if (presetArr[i].hold > 0 || i >= presetArr.length - 1) break;
+    }
+    runs.push({ startIndex: start, endIndex: i, totalMs });
+  }
+  return runs;
+}
+
+const WAYPOINT_LINGER = 0.6;
+
+// Blends a leg's raw linear progress with the currently selected easing
+// curve (from the Easing dropdown) by WAYPOINT_LINGER.
+function applyWaypointEase(t) {
+  let eased = applyEasing(t);
+  return lerp(t, eased, WAYPOINT_LINGER);
+}
+
+// Given a run and an elapsed time measured from the run's start, returns
+// which leg (p1 -> p2) we're in and the eased t within that leg.
+//
+// Previously this eased once across the *whole run* (globalT) and then
+// re-eased the resulting leg fraction again with a hardcoded smoothstep.
+// That meant middle legs of a run barely eased at all (the global S-curve
+// is close to linear through its middle), and the two easing passes
+// compounded oddly for single-leg runs. Now each leg is located using
+// linear (real) time, and gets the actual selected easing curve applied to
+// just itself, blended with linear via WAYPOINT_LINGER so motion stays
+// continuous (non-zero velocity) through interior waypoints instead of
+// hard-stopping at every one of them.
+function sampleRun(run, presetArr, elapsedInRun) {
+  let clamped = constrain(elapsedInRun, 0, run.totalMs);
+  let runFinished = elapsedInRun >= run.totalMs;
+
+  let acc = 0;
+  for (let idx = run.startIndex; idx < run.endIndex; idx++) {
+    let legMs = presetArr[idx + 1].ms;
+    if (clamped <= acc + legMs || idx === run.endIndex - 1) {
+      let legT = legMs > 0 ? (clamped - acc) / legMs : 1;
+      legT = constrain(legT, 0, 1);
+      legT = applyWaypointEase(legT);
+      return { p1: presetArr[idx], p2: presetArr[idx + 1], t: legT, runFinished };
+    }
+    acc += legMs;
+  }
+  // fallback (shouldn't hit, but keeps things defined)
+  let lastIdx = run.endIndex - 1;
+  return { p1: presetArr[lastIdx], p2: presetArr[run.endIndex], t: 1, runFinished: true };
+}
+
+// Finds which run (if any) a given preset index belongs to, i.e. the run
+// whose startIndex <= index < endIndex.
+function findRunForIndex(runs, index) {
+  for (let r of runs) {
+    if (index >= r.startIndex && index < r.endIndex) return r;
+  }
+  return null;
+}
+
+// How much time (ms) has already elapsed *within this run* before the leg
+// starting at currentIndex began — needed because cursorStartTime resets at
+// every leg boundary, but the run's easing needs continuous elapsed-in-run time.
+function runElapsedOffset(run, presetArr, currentIndex) {
+  let offset = 0;
+  for (let idx = run.startIndex; idx < currentIndex; idx++) {
+    offset += presetArr[idx + 1].ms;
+  }
+  return offset;
 }
 
 function setup() {
@@ -181,6 +288,7 @@ function setup() {
   masterPath = initialMasterPath.map((p) => ({ x: p.x, y: p.y }));
   rawCursorPresets = initialCursorPresets.map((p) => normalizeRawCursorPreset(p));
   presets = buildCursorPresetsFromRaw(rawCursorPresets);
+  cursorRuns = computeCursorRuns(presets);
 
   txtBoxPresetEl.value = stringifyBoxPresetRaw(rawBoxPreset);
   txtCursorPresetsEl.value = JSON.stringify(rawCursorPresets, null, 2);
@@ -311,6 +419,7 @@ function applyCursorPresets() {
   cursorPresetErrorDivEl.textContent = "";
   rawCursorPresets = raw;
   presets = buildCursorPresetsFromRaw(rawCursorPresets);
+  cursorRuns = computeCursorRuns(presets);
 
   isCursorPlaying = false;
   isCursorFinished = false;
@@ -374,64 +483,90 @@ function computeCursorValueAtElapsed(elapsedMs) {
   let status = sceneStatusAtElapsed(cursorTimelineBar.segs, elapsedMs);
   if (!status) {
     let first = presets[0];
-    return { x: first.x, y: first.y, dx: 0, dy: 0, scale: first.scale, angleTwist: first.angleTwist,
+    let tan = pathTangentAt(first.pathIndex);
+    return { x: first.x, y: first.y, dx: tan.dx, dy: tan.dy, scale: first.scale, angleTwist: first.angleTwist,
              rotX: first.rotX, rotY: first.rotY, rotZ: first.rotZ, cameraZoom: first.cameraZoom };
   }
 
   if (status.phase === "END") {
     let last = presets[presets.length - 1];
-    return { x: last.x, y: last.y, dx: 0, dy: 0, scale: last.scale, angleTwist: last.angleTwist,
+    let tan = pathTangentAt(last.pathIndex);
+    return { x: last.x, y: last.y, dx: tan.dx, dy: tan.dy, scale: last.scale, angleTwist: last.angleTwist,
              rotX: last.rotX, rotY: last.rotY, rotZ: last.rotZ, cameraZoom: last.cameraZoom };
   }
 
   if (status.phase === "HOLD") {
     let p1 = presets[status.index];
     let p2 = presets[Math.min(status.index + 1, presets.length - 1)];
-    return { x: p1.x, y: p1.y, dx: p2.x - p1.x, dy: p2.y - p1.y, scale: p1.scale,
-             angleTwist: p1.angleTwist, rotX: p1.rotX, rotY: p1.rotY, rotZ: p1.rotZ,
-             cameraZoom: p1.cameraZoom };
-  }
-
-  // MOVE phase: transitioning from the previous step into status.index
-  let p1 = presets[Math.max(0, status.index - 1)];
-  let p2 = presets[status.index];
-  let progress = status.phaseDur > 0 ? constrain(status.phaseElapsed / status.phaseDur, 0, 1) : 1;
-  progress = applyEasing(progress);
-
-  let rawIdx = map(progress, 0, 1, p1.pathIndex, p2.pathIndex);
-  let low = floor(rawIdx);
-  let high = ceil(rawIdx);
-  let t = rawIdx - low;
-
-  let pA = masterPath[constrain(low, 0, masterPath.length - 1)];
-  let pB = masterPath[constrain(high, 0, masterPath.length - 1)];
-  let posX = lerp(pA.x, pB.x, t);
-  let posY = lerp(pA.y, pB.y, t);
-
-  let dx, dy;
-  if (p1.pathIndex === p2.pathIndex) {
-    dx = 0;
-    dy = 0;
-  } else {
-    const DIR_LOOKAHEAD = 4;
-    let behind = masterPath[constrain(low - DIR_LOOKAHEAD, 0, masterPath.length - 1)];
-    let ahead = masterPath[constrain(high + DIR_LOOKAHEAD, 0, masterPath.length - 1)];
-    dx = ahead.x - behind.x;
-    dy = ahead.y - behind.y;
+    let tan = pathTangentAt(p1.pathIndex);
+    let dx = tan.dx, dy = tan.dy;
     if (dx === 0 && dy === 0) {
       dx = p2.x - p1.x;
       dy = p2.y - p1.y;
     }
+    return { x: p1.x, y: p1.y, dx, dy, scale: p1.scale,
+             angleTwist: p1.angleTwist, rotX: p1.rotX, rotY: p1.rotY, rotZ: p1.rotZ,
+             cameraZoom: p1.cameraZoom };
+  }
+
+  // MOVE phase: use run-based easing so scrubbing matches live playback —
+  // eased once across the whole zero-hold chain instead of per-segment.
+  let run = findRunForIndex(cursorRuns, status.index - 1);
+  let p1, p2, t;
+
+  if (run) {
+    let legOffset = runElapsedOffset(run, presets, status.index - 1);
+    let elapsedInRun = status.phaseElapsed + legOffset;
+    let sample = sampleRun(run, presets, elapsedInRun);
+    p1 = sample.p1;
+    p2 = sample.p2;
+    t = sample.t;
+  } else {
+    p1 = presets[Math.max(0, status.index - 1)];
+    p2 = presets[status.index];
+    let progress = status.phaseDur > 0 ? constrain(status.phaseElapsed / status.phaseDur, 0, 1) : 1;
+    t = applyEasing(progress);
+  }
+
+  let rawIdx = map(t, 0, 1, p1.pathIndex, p2.pathIndex);
+  let low = floor(rawIdx);
+  let high = ceil(rawIdx);
+  let frac = rawIdx - low;
+
+  let pA = masterPath[constrain(low, 0, masterPath.length - 1)];
+  let pB = masterPath[constrain(high, 0, masterPath.length - 1)];
+  let posX = lerp(pA.x, pB.x, frac);
+  let posY = lerp(pA.y, pB.y, frac);
+
+  // Always derive direction from the local path tangent around the current
+  // position (low..high). When p1.pathIndex === p2.pathIndex, low === high,
+  // so this naturally becomes the tangent at that single point — i.e. the
+  // direction the path was heading when the cursor arrived there — rather
+  // than a hard "no motion = no direction" zero that discarded that info.
+  let behind = masterPath[constrain(low - DIR_LOOKAHEAD, 0, masterPath.length - 1)];
+  let ahead = masterPath[constrain(high + DIR_LOOKAHEAD, 0, masterPath.length - 1)];
+  let dx = ahead.x - behind.x;
+  let dy = ahead.y - behind.y;
+  if (dx === 0 && dy === 0) {
+    dx = p2.x - p1.x;
+    dy = p2.y - p1.y;
   }
 
   return {
     x: posX, y: posY, dx, dy,
-    scale: lerp(p1.scale, p2.scale, progress),
-    angleTwist: lerp(p1.angleTwist, p2.angleTwist, progress),
-    rotX: lerp(p1.rotX, p2.rotX, progress),
-    rotY: lerp(p1.rotY, p2.rotY, progress),
-    rotZ: lerp(p1.rotZ, p2.rotZ, progress),
-    cameraZoom: p2.cameraZoom,
+    scale: lerp(p1.scale, p2.scale, t),
+    angleTwist: lerp(p1.angleTwist, p2.angleTwist, t),
+    rotX: lerp(p1.rotX, p2.rotX, t),
+    rotY: lerp(p1.rotY, p2.rotY, t),
+    rotZ: lerp(p1.rotZ, p2.rotZ, t),
+    // NOTE: was `p2.cameraZoom` — that made scrubbing/thumbnails use the
+    // *target* step's camera-zoom flag while mid-transition, whereas live
+    // playback (getCurrentCursorCameraZoom) and the HOLD branch above both
+    // use the *departure* step's flag (p1) for the whole move. Whenever a
+    // step toggled cameraZoom, this mismatch put the cursor in the wrong
+    // coordinate frame (flat overlay vs. embedded in the box's 3D rotation)
+    // during scrubbing/thumbnails, which reads as "wrong rotation."
+    cameraZoom: p1.cameraZoom,
   };
 }
 
@@ -1026,15 +1161,18 @@ function drawCursorIcon(g, angleRef, x, y, dx, dy, scaleVal, angleTwist, rotX = 
     else angleRef.value = lerpAngle(angleRef.value, targetAngle, ANGLE_SMOOTHING);
   }
 
+  // CURSOR STROKE WIDTH
+  csw = 2;
+
   g.push();
   g.translate(x, y, 0);
   g.rotateX(rotX);
   g.rotateY(rotY);
   g.rotateZ(angleRef.value + angleTwist + rotZ);
   g.scale(scaleVal);
-  g.stroke(0);
-  g.strokeWeight(4 / scaleVal);
-  g.fill(255);
+  g.stroke(255);
+  g.strokeWeight(1/2 * scaleVal * csw);
+  g.fill(0);
   g.beginShape();
   for (let p of CURSOR_POINTS) g.vertex(p.x, p.y);
   g.endShape(CLOSE);
@@ -1052,12 +1190,22 @@ function animateCursor() {
   let p2 = presets[cursorPlayIndex + 1];
 
   if (!cursorIsHolding && cursorStartTime === 0) {
-    cursorIsHolding = true;
-    cursorHoldStart = millis();
+    if (p1.hold > 0) {
+      cursorIsHolding = true;
+      cursorHoldStart = millis();
+    } else {
+      cursorStartTime = millis(); // skip the hold entirely, go straight to motion
+    }
   }
 
   if (cursorIsHolding) {
-    drawCursorIcon(window, liveCursorAngleRef, p1.x, p1.y, p2.x - p1.x, p2.y - p1.y, p1.scale, p1.angleTwist, p1.rotX, p1.rotY, p1.rotZ);
+    let holdTan = pathTangentAt(p1.pathIndex);
+    let holdDx = holdTan.dx, holdDy = holdTan.dy;
+    if (holdDx === 0 && holdDy === 0) {
+      holdDx = p2.x - p1.x;
+      holdDy = p2.y - p1.y;
+    }
+    drawCursorIcon(window, liveCursorAngleRef, p1.x, p1.y, holdDx, holdDy, p1.scale, p1.angleTwist, p1.rotX, p1.rotY, p1.rotZ);
     if (millis() - cursorHoldStart >= p1.hold) {
       cursorIsHolding = false;
       cursorStartTime = millis();
@@ -1065,50 +1213,73 @@ function animateCursor() {
     return;
   }
 
-  let elapsed = millis() - cursorStartTime;
-  let progress = p2.ms > 0 ? map(elapsed, 0, p2.ms, 0, 1, true) : 1;
-  progress = applyEasing(progress);
+  let run = findRunForIndex(cursorRuns, cursorPlayIndex);
+  let t, runFinished;
 
-  let rawIdx = map(progress, 0, 1, p1.pathIndex, p2.pathIndex);
+  if (run) {
+    let elapsedInRun = millis() - cursorStartTime + runElapsedOffset(run, presets, cursorPlayIndex);
+    let sample = sampleRun(run, presets, elapsedInRun);
+    p1 = sample.p1;
+    p2 = sample.p2;
+    t = sample.t;
+    runFinished = sample.runFinished;
+  } else {
+    // shouldn't normally happen (every non-held step belongs to some run),
+    // but fall back to the old per-segment behavior just in case
+    let elapsed = millis() - cursorStartTime;
+    let progress = p2.ms > 0 ? map(elapsed, 0, p2.ms, 0, 1, true) : 1;
+    t = applyEasing(progress);
+    runFinished = t >= 1;
+  }
+
+  let rawIdx = map(t, 0, 1, p1.pathIndex, p2.pathIndex);
   let low = floor(rawIdx);
   let high = ceil(rawIdx);
-  let t = rawIdx - low;
+  let frac = rawIdx - low;
 
   let pA = masterPath[constrain(low, 0, masterPath.length - 1)];
   let pB = masterPath[constrain(high, 0, masterPath.length - 1)];
 
-  let posX = lerp(pA.x, pB.x, t);
-  let posY = lerp(pA.y, pB.y, t);
+  let posX = lerp(pA.x, pB.x, frac);
+  let posY = lerp(pA.y, pB.y, frac);
 
-  let dx, dy;
-  if (p1.pathIndex === p2.pathIndex) {
-    dx = 0;
-    dy = 0;
-  } else {
-    const DIR_LOOKAHEAD = 4;
-    let behind = masterPath[constrain(low - DIR_LOOKAHEAD, 0, masterPath.length - 1)];
-    let ahead = masterPath[constrain(high + DIR_LOOKAHEAD, 0, masterPath.length - 1)];
-    dx = ahead.x - behind.x;
-    dy = ahead.y - behind.y;
-    if (dx === 0 && dy === 0) {
-      dx = p2.x - p1.x;
-      dy = p2.y - p1.y;
-    }
+  // See computeCursorValueAtElapsed for why this no longer special-cases
+  // p1.pathIndex === p2.pathIndex — the tangent-based lookup degrades
+  // gracefully to "direction at that single point" instead of "no direction."
+  let behind = masterPath[constrain(low - DIR_LOOKAHEAD, 0, masterPath.length - 1)];
+  let ahead = masterPath[constrain(high + DIR_LOOKAHEAD, 0, masterPath.length - 1)];
+  let dx = ahead.x - behind.x;
+  let dy = ahead.y - behind.y;
+  if (dx === 0 && dy === 0) {
+    dx = p2.x - p1.x;
+    dy = p2.y - p1.y;
   }
 
-  let currentScale = lerp(p1.scale, p2.scale, progress);
-  let currentTwist = lerp(p1.angleTwist, p2.angleTwist, progress);
-  let currentRotX = lerp(p1.rotX, p2.rotX, progress);
-  let currentRotY = lerp(p1.rotY, p2.rotY, progress);
-  let currentRotZ = lerp(p1.rotZ, p2.rotZ, progress);
+  let currentScale = lerp(p1.scale, p2.scale, t);
+  let currentTwist = lerp(p1.angleTwist, p2.angleTwist, t);
+  let currentRotX = lerp(p1.rotX, p2.rotX, t);
+  let currentRotY = lerp(p1.rotY, p2.rotY, t);
+  let currentRotZ = lerp(p1.rotZ, p2.rotZ, t);
 
   drawCursorIcon(window, liveCursorAngleRef, posX, posY, dx, dy, currentScale, currentTwist, currentRotX, currentRotY, currentRotZ);
 
-  if (progress >= 1) {
-    cursorPlayIndex++;
-    cursorIsHolding = true;
-    cursorHoldStart = millis();
-    cursorStartTime = 0;
+  if (runFinished) {
+    // Jump straight to the run's true end index — NOT +1 — because the run
+    // sampler may have already been rendering a leg several steps ahead of
+    // cursorPlayIndex (it picks legs by absolute elapsed time, not by walking
+    // step-by-step). Incrementing by 1 here left cursorPlayIndex behind the
+    // actual finished position, causing the remaining legs to play a second time.
+    cursorPlayIndex = run ? run.endIndex : cursorPlayIndex + 1;
+    let next = presets[cursorPlayIndex];
+    if (next.hold > 0) {
+      cursorIsHolding = true;
+      cursorHoldStart = millis();
+      cursorStartTime = 0;
+    } else {
+      // no hold on the next step — carry straight into its move phase
+      cursorIsHolding = false;
+      cursorStartTime = millis();
+    }
   }
 }
 
