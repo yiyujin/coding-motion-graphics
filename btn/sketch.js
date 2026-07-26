@@ -1,3 +1,55 @@
+// NEW CURSOR TEST
+const HAND_CURSOR_PATH_D =
+  "M11.3,20.4c-0.3-0.4-0.6-1.1-1.2-2c-0.3-0.5-1.2-1.5-1.5-1.9c-0.2-0.4-0.2-0.6-0.1-1c0.1-0.6,0.7-1.1,1.4-1.1c0.5,0,1,0.4,1.4,0.7c0.2,0.2,0.5,0.6,0.7,0.8c0.2,0.2,0.2,0.3,0.4,0.5c0.2,0.3,0.3,0.5,0.2,0.1c-0.1-0.5-0.2-1.3-0.4-2.1c-0.1-0.6-0.2-0.7-0.3-1.1c-0.1-0.5-0.2-0.8-0.3-1.3c-0.1-0.3-0.2-1.1-0.3-1.5c-0.1-0.5-0.1-1.4,0.3-1.8c0.3-0.3,0.9-0.4,1.3-0.2c0.5,0.3,0.8,1,0.9,1.3c0.2,0.5,0.4,1.2,0.5,2c0.2,1,0.5,2.5,0.5,2.8c0-0.4-0.1-1.1,0-1.5c0.1-0.3,0.3-0.7,0.7-0.8c0.3-0.1,0.6-0.1,0.9-0.1c0.3,0.1,0.6,0.3,0.8,0.5c0.4,0.6,0.4,1.9,0.4,1.8c0.1-0.4,0.1-1.2,0.3-1.6c0.1-0.2,0.5-0.4,0.7-0.5c0.3-0.1,0.7-0.1,1,0c0.2,0,0.6,0.3,0.7,0.5c0.2,0.3,0.3,1.3,0.4,1.7c0,0.1,0.1-0.4,0.3-0.7c0.4-0.6,1.8-0.8,1.9,0.6c0,0.7,0,0.6,0,1.1c0,0.5,0,0.8,0,1.2c0,0.4-0.1,1.3-0.2,1.7c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1.1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1L11.3,20.4z";
+
+const HAND_FINGER_LINES_SVG = [
+  { x1: 19.6, y1: 20.7, x2: 19.6, y2: 17.3 },
+  { x1: 17.6, y1: 20.7, x2: 17.5, y2: 17.3 },
+  { x1: 15.6, y1: 17.3, x2: 15.6, y2: 20.7 },
+];
+
+let HAND_POINTS = [];
+let HAND_FINGER_LINES = [];
+
+function sampleSvgPathPoints(pathData, numPoints = 120) {
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  const path = document.createElementNS(svgNS, "path");
+  path.setAttribute("d", pathData);
+  svg.appendChild(path);
+  svg.style.position = "absolute";
+  svg.style.width = "0";
+  svg.style.height = "0";
+  svg.style.overflow = "hidden";
+  document.body.appendChild(svg); // must be in the DOM for getPointAtLength to be reliable
+
+  const totalLength = path.getTotalLength();
+  const points = [];
+  for (let i = 0; i < numPoints; i++) {
+    const pt = path.getPointAtLength((i / numPoints) * totalLength);
+    points.push({ x: pt.x, y: pt.y });
+  }
+
+  document.body.removeChild(svg);
+  return points;
+}
+
+function getPointsBounds(points) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (let p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, maxX, minY, maxY };
+}
+
+
+
+
+
+
 let w = 330, h = 120, d = 20, r = 60;
 
 const TIMELINE_TRACK_PX = 535;
@@ -246,6 +298,29 @@ function runElapsedOffset(run, presetArr, currentIndex) {
 function setup() {
   let cnv = createCanvas(600, 600, WEBGL);
   document.getElementById("canvas-container").appendChild(cnv.elt);
+
+
+
+
+
+//   HAND_POINTS = sampleSvgPathPoints(HAND_CURSOR_PATH_D, 120);
+
+// let allPts = HAND_POINTS.concat(
+//   HAND_FINGER_LINES_SVG.flatMap((l) => [{ x: l.x1, y: l.y1 }, { x: l.x2, y: l.y2 }])
+// );
+// let b = getPointsBounds(allPts);
+// let anchorX = b.minX + (b.maxX - b.minX) / 2;
+// let anchorY = b.minY + (b.maxY - b.minY) / 2;
+// // swap in a specific hotspot instead of the bbox center if you want, e.g. anchorX = 16, anchorY = 9
+
+// HAND_POINTS = HAND_POINTS.map((p) => ({ x: p.x - anchorX, y: p.y - anchorY }));
+// HAND_FINGER_LINES = HAND_FINGER_LINES_SVG.map((l) => ({
+//   x1: l.x1 - anchorX, y1: l.y1 - anchorY,
+//   x2: l.x2 - anchorX, y2: l.y2 - anchorY,
+// }));
+
+
+
 
   rawBoxPreset = initialBoxPreset.map(normalizeBoxPreset);
   boxPreset = buildBoxPresetFromRaw(rawBoxPreset);
@@ -1179,6 +1254,41 @@ function drawCursorIcon(g, angleRef, x, y, dx, dy, scaleVal, angleTwist, rotX = 
   g.pop();
 }
 
+
+// function drawCursorIcon(g, angleRef, x, y, dx, dy, scaleVal, angleTwist, rotX = 0, rotY = 0, rotZ = 0) {
+//   if (dx === 0 && dy === 0) {
+//     if (angleRef.value === null) angleRef.value = 0;
+//   } else {
+//     let targetAngle = atan2(dy, dx);
+//     if (angleRef.value === null) angleRef.value = targetAngle;
+//     else angleRef.value = lerpAngle(angleRef.value, targetAngle, ANGLE_SMOOTHING);
+//   }
+
+//   g.push();
+//   g.translate(x, y, 0);
+//   g.rotateX(rotX);
+//   g.rotateY(rotY);
+//   g.rotateZ(angleRef.value + angleTwist + rotZ + 90);
+//   g.scale(scaleVal);
+
+//   // hand outline — white fill, black stroke
+//   g.stroke(0);
+//   g.strokeWeight(0.75 * scaleVal);
+//   g.fill(255);
+//   g.beginShape();
+//   for (let p of HAND_POINTS) g.vertex(p.x, p.y);
+//   g.endShape(CLOSE);
+
+//   // finger crease lines
+//   g.stroke(0);
+//   g.strokeWeight(0.75 * scaleVal);
+//   g.noFill();
+//   for (let l of HAND_FINGER_LINES) g.line(l.x1, l.y1, l.x2, l.y2);
+
+//   g.pop();
+// }
+
+
 function animateCursor() {
   if (cursorPlayIndex >= presets.length - 1) {
     isCursorPlaying = false;
@@ -1724,3 +1834,7 @@ function applyEasing(t) {
   let fn = easings && easingSelect ? easings[easingSelect.value] : null;
   return typeof fn === "function" ? fn(t) : t;
 }
+
+
+
+
