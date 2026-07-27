@@ -16,12 +16,12 @@ const initialCursorPresets =
     "id": 2,
     "pathIndex": 70,
     "scale": 2,
-    "angleTwist": 0,
+    "angleTwist": 0.1,
     "rotX": 0,
     "rotY": 0,
     "rotZ": 0,
-    "ms": 350,
-    "hold": 100,
+    "ms": 300,
+    "hold": 0,
     "cameraZoom": false
   },
   {
@@ -32,7 +32,7 @@ const initialCursorPresets =
     "rotX": 0,
     "rotY": 0,
     "rotZ": 0,
-    "ms": 250,
+    "ms": 300,
     "hold": 0,
     "cameraZoom": false
   },
@@ -67,7 +67,7 @@ const initialCursorPresets =
     "angleTwist": -1.2,
     "rotX": 0,
     "rotY": 0,
-    "rotZ": 0, 
+    "rotZ": 0,
     "ms": 300,
     "hold": 0,
     "cameraZoom": true

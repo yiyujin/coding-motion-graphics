@@ -1,55 +1,3 @@
-// NEW CURSOR TEST
-const HAND_CURSOR_PATH_D =
-  "M11.3,20.4c-0.3-0.4-0.6-1.1-1.2-2c-0.3-0.5-1.2-1.5-1.5-1.9c-0.2-0.4-0.2-0.6-0.1-1c0.1-0.6,0.7-1.1,1.4-1.1c0.5,0,1,0.4,1.4,0.7c0.2,0.2,0.5,0.6,0.7,0.8c0.2,0.2,0.2,0.3,0.4,0.5c0.2,0.3,0.3,0.5,0.2,0.1c-0.1-0.5-0.2-1.3-0.4-2.1c-0.1-0.6-0.2-0.7-0.3-1.1c-0.1-0.5-0.2-0.8-0.3-1.3c-0.1-0.3-0.2-1.1-0.3-1.5c-0.1-0.5-0.1-1.4,0.3-1.8c0.3-0.3,0.9-0.4,1.3-0.2c0.5,0.3,0.8,1,0.9,1.3c0.2,0.5,0.4,1.2,0.5,2c0.2,1,0.5,2.5,0.5,2.8c0-0.4-0.1-1.1,0-1.5c0.1-0.3,0.3-0.7,0.7-0.8c0.3-0.1,0.6-0.1,0.9-0.1c0.3,0.1,0.6,0.3,0.8,0.5c0.4,0.6,0.4,1.9,0.4,1.8c0.1-0.4,0.1-1.2,0.3-1.6c0.1-0.2,0.5-0.4,0.7-0.5c0.3-0.1,0.7-0.1,1,0c0.2,0,0.6,0.3,0.7,0.5c0.2,0.3,0.3,1.3,0.4,1.7c0,0.1,0.1-0.4,0.3-0.7c0.4-0.6,1.8-0.8,1.9,0.6c0,0.7,0,0.6,0,1.1c0,0.5,0,0.8,0,1.2c0,0.4-0.1,1.3-0.2,1.7c-0.1,0.3-0.4,1-0.7,1.4c0,0-1.1,1.2-1.2,1.8c-0.1,0.6-0.1,0.6-0.1,1c0,0.4,0.1,0.9,0.1,0.9s-0.8,0.1-1.2,0c-0.4-0.1-0.9-0.8-1-1.1c-0.2-0.3-0.5-0.3-0.7,0c-0.2,0.4-0.7,1.1-1.1,1.1c-0.7,0.1-2.1,0-3.1,0c0,0,0.2-1-0.2-1.4c-0.3-0.3-0.8-0.8-1.1-1.1L11.3,20.4z";
-
-const HAND_FINGER_LINES_SVG = [
-  { x1: 19.6, y1: 20.7, x2: 19.6, y2: 17.3 },
-  { x1: 17.6, y1: 20.7, x2: 17.5, y2: 17.3 },
-  { x1: 15.6, y1: 17.3, x2: 15.6, y2: 20.7 },
-];
-
-let HAND_POINTS = [];
-let HAND_FINGER_LINES = [];
-
-function sampleSvgPathPoints(pathData, numPoints = 120) {
-  const svgNS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(svgNS, "svg");
-  const path = document.createElementNS(svgNS, "path");
-  path.setAttribute("d", pathData);
-  svg.appendChild(path);
-  svg.style.position = "absolute";
-  svg.style.width = "0";
-  svg.style.height = "0";
-  svg.style.overflow = "hidden";
-  document.body.appendChild(svg); // must be in the DOM for getPointAtLength to be reliable
-
-  const totalLength = path.getTotalLength();
-  const points = [];
-  for (let i = 0; i < numPoints; i++) {
-    const pt = path.getPointAtLength((i / numPoints) * totalLength);
-    points.push({ x: pt.x, y: pt.y });
-  }
-
-  document.body.removeChild(svg);
-  return points;
-}
-
-function getPointsBounds(points) {
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (let p of points) {
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  }
-  return { minX, maxX, minY, maxY };
-}
-
-
-
-
-
-
 let w = 330, h = 120, d = 20, r = 60;
 
 const TIMELINE_TRACK_PX = 535;
@@ -83,16 +31,12 @@ let cursorPlayIndex = 0;
 let cursorStartTime = 0;
 let cursorHoldStart = 0;
 let cursorIsHolding = false;
-// Angle-smoothing state for the *live* cursor icon (the one driven by
-// animateCursor() / the seek preview). Kept in an object (rather than a bare
-// variable) so the thumbnail renderer can use its own separate ref and never
-// disturb this one.
+
 let liveCursorAngleRef = { value: null };
 let cursorPlaybackClockStart = 0;
 const ANGLE_SMOOTHING = 0.18;
 
-// Offscreen buffer + its own angle-smoothing ref, used only for generating
-// step-button thumbnails.
+
 let thumbBuffer;
 let thumbCursorAngleRef = { value: null };
 const THUMB_SIZE = 600; // same resolution as the real canvas, so thumbnails are pixel-accurate; scaled down visually via <img> width/height
@@ -102,68 +46,26 @@ let boxSceneLabel, cursorSceneLabel;
 
 let selectedComponent = "box"; // "box" | "cursor" — determines which step numeric keys control
 
-
 // LOAD DATA
 let initialBoxPresetJson = [];
 let rawCursorPresets = [];
-
-const cw = 7, cyy = 16, cw2 = 1.5;
-
-// CURSORTYPE1
-CURSOR_POINTS = [
-  { x: 0, y: 0 },
-  { x: cw, y: cyy },
-  { x: cw2, y: cyy - cw2 },
-  { x: cw2, y: cyy + 4 },
-  { x: -cw2, y: cyy + 4 },
-  { x: -cw2, y: cyy - cw2 },
-  { x: -cw, y: cyy },
-];
-
-// CURSORTYPE2
-
-CURSOR_POINTS = [
-  { x: 0,  y: 0  },
-  { x: cw,  y: cyy },
-  {x : 0, y : cyy - 3 },
-  { x: -cw, y: cyy }
-];
-
-let CURSOR_TIP_ANGLE;
 
 let txtInputEl, sldLightXEl, sldLightYEl, sldIntensityEl, colorPickerEl, chkVisualizeEl, chkShowPathEl;
 let boxStepBtnContainerEl, boxStepInfoDivEl, cursorStepBtnContainerEl, cursorStepInfoDivEl;
 let txtBoxPresetEl, boxPresetErrorDivEl, txtCursorPresetsEl, cursorPresetErrorDivEl;
 let timelineContainerDivEl;
 let sharedPlayhead;
+let cursorTypeSelectEl;
 
 function preload(){
   font = loadFont("Roboto-Regular.ttf");
 };
-
-function getShapeTipAngle(points) {
-  let xs = points.map((p) => p.x);
-  let ys = points.map((p) => p.y);
-  let minX = Math.min(...xs), maxX = Math.max(...xs);
-  let minY = Math.min(...ys), maxY = Math.max(...ys);
-  let centerX = minX + (maxX - minX) / 2;
-  let centerY = minY + (maxY - minY) / 2;
-  let tip = points[0];
-  return atan2(tip.y - centerY, tip.x - centerX);
-}
 
 function lerpAngle(current, target, amt) {
   let diff = ((((target - current + PI) % TWO_PI) + TWO_PI) % TWO_PI) - PI;
   return current + diff * amt;
 }
 
-// Local tangent of the master path around a given path index. Used so that
-// a cursor sitting still at one pathIndex (e.g. several presets in a row
-// with the same pathIndex, only scale/twist changing) still faces the
-// direction the path was heading when it arrived there, instead of falling
-// back to a meaningless default angle. This matters most for scrubbing and
-// thumbnails, where the angle-smoothing ref gets reset to null and so has
-// no memory of "which way it was already facing" the way live playback does.
 const DIR_LOOKAHEAD = 4;
 function pathTangentAt(pathIndex) {
   if (masterPath.length === 0) return { dx: 0, dy: 0 };
@@ -215,112 +117,11 @@ function buildCursorPresetsFromRaw(raw) {
   });
 }
 
-// A "run" is a maximal chain of consecutive presets connected by hold === 0
-// on the *arriving* preset. Easing is applied once across the whole run,
-// not per-segment, so waypoints in the middle of a run don't decelerate to zero.
-function computeCursorRuns(presetArr) {
-  let runs = [];
-  let i = 0;
-  while (i < presetArr.length - 1) {
-    let start = i;
-    let totalMs = 0;
-    while (i < presetArr.length - 1) {
-      totalMs += presetArr[i + 1].ms;
-      i++;
-      if (presetArr[i].hold > 0 || i >= presetArr.length - 1) break;
-    }
-    runs.push({ startIndex: start, endIndex: i, totalMs });
-  }
-  return runs;
-}
-
-const WAYPOINT_LINGER = 0.6;
-
-// Blends a leg's raw linear progress with the currently selected easing
-// curve (from the Easing dropdown) by WAYPOINT_LINGER.
-function applyWaypointEase(t) {
-  let eased = applyEasing(t);
-  return lerp(t, eased, WAYPOINT_LINGER);
-}
-
-// Given a run and an elapsed time measured from the run's start, returns
-// which leg (p1 -> p2) we're in and the eased t within that leg.
-//
-// Previously this eased once across the *whole run* (globalT) and then
-// re-eased the resulting leg fraction again with a hardcoded smoothstep.
-// That meant middle legs of a run barely eased at all (the global S-curve
-// is close to linear through its middle), and the two easing passes
-// compounded oddly for single-leg runs. Now each leg is located using
-// linear (real) time, and gets the actual selected easing curve applied to
-// just itself, blended with linear via WAYPOINT_LINGER so motion stays
-// continuous (non-zero velocity) through interior waypoints instead of
-// hard-stopping at every one of them.
-function sampleRun(run, presetArr, elapsedInRun) {
-  let clamped = constrain(elapsedInRun, 0, run.totalMs);
-  let runFinished = elapsedInRun >= run.totalMs;
-
-  let acc = 0;
-  for (let idx = run.startIndex; idx < run.endIndex; idx++) {
-    let legMs = presetArr[idx + 1].ms;
-    if (clamped <= acc + legMs || idx === run.endIndex - 1) {
-      let legT = legMs > 0 ? (clamped - acc) / legMs : 1;
-      legT = constrain(legT, 0, 1);
-      legT = applyWaypointEase(legT);
-      return { p1: presetArr[idx], p2: presetArr[idx + 1], t: legT, runFinished };
-    }
-    acc += legMs;
-  }
-  // fallback (shouldn't hit, but keeps things defined)
-  let lastIdx = run.endIndex - 1;
-  return { p1: presetArr[lastIdx], p2: presetArr[run.endIndex], t: 1, runFinished: true };
-}
-
-// Finds which run (if any) a given preset index belongs to, i.e. the run
-// whose startIndex <= index < endIndex.
-function findRunForIndex(runs, index) {
-  for (let r of runs) {
-    if (index >= r.startIndex && index < r.endIndex) return r;
-  }
-  return null;
-}
-
-// How much time (ms) has already elapsed *within this run* before the leg
-// starting at currentIndex began — needed because cursorStartTime resets at
-// every leg boundary, but the run's easing needs continuous elapsed-in-run time.
-function runElapsedOffset(run, presetArr, currentIndex) {
-  let offset = 0;
-  for (let idx = run.startIndex; idx < currentIndex; idx++) {
-    offset += presetArr[idx + 1].ms;
-  }
-  return offset;
-}
-
 function setup() {
   let cnv = createCanvas(600, 600, WEBGL);
   document.getElementById("canvas-container").appendChild(cnv.elt);
 
-
-
-
-
-//   HAND_POINTS = sampleSvgPathPoints(HAND_CURSOR_PATH_D, 120);
-
-// let allPts = HAND_POINTS.concat(
-//   HAND_FINGER_LINES_SVG.flatMap((l) => [{ x: l.x1, y: l.y1 }, { x: l.x2, y: l.y2 }])
-// );
-// let b = getPointsBounds(allPts);
-// let anchorX = b.minX + (b.maxX - b.minX) / 2;
-// let anchorY = b.minY + (b.maxY - b.minY) / 2;
-// // swap in a specific hotspot instead of the bbox center if you want, e.g. anchorX = 16, anchorY = 9
-
-// HAND_POINTS = HAND_POINTS.map((p) => ({ x: p.x - anchorX, y: p.y - anchorY }));
-// HAND_FINGER_LINES = HAND_FINGER_LINES_SVG.map((l) => ({
-//   x1: l.x1 - anchorX, y1: l.y1 - anchorY,
-//   x2: l.x2 - anchorX, y2: l.y2 - anchorY,
-// }));
-
-
-
+  initCursorTypes(); // from cursor-types.js — samples hand SVG points, precomputes tip angles
 
   rawBoxPreset = initialBoxPreset.map(normalizeBoxPreset);
   boxPreset = buildBoxPresetFromRaw(rawBoxPreset);
@@ -330,8 +131,6 @@ function setup() {
 
   thumbBuffer = createGraphics(THUMB_SIZE, THUMB_SIZE, WEBGL);
   thumbBuffer.textFont(font);
-
-  CURSOR_TIP_ANGLE = getShapeTipAngle(CURSOR_POINTS);
 
   txtInputEl = document.getElementById("txtInput");
   sldLightXEl = document.getElementById("sldLightX");
@@ -349,6 +148,7 @@ function setup() {
   txtCursorPresetsEl = document.getElementById("txtCursorPresets");
   cursorPresetErrorDivEl = document.getElementById("cursorPresetErrorDiv");
   timelineContainerDivEl = document.getElementById("timelineContainerDiv");
+  cursorTypeSelectEl = document.getElementById("selCursorType");
 
   // Easing setup — loadEasings() returns a name -> function map; the select
   // element lets the user choose which curve shapes every MOVE-phase
@@ -356,14 +156,9 @@ function setup() {
   easings = loadEasings();
   easingSelect = document.getElementById("selEasing");
 
-  rawBoxPreset = initialBoxPreset.map(normalizeBoxPreset);
-  boxPreset = buildBoxPresetFromRaw(rawBoxPreset);
-  defaultBoxPresetRaw = JSON.parse(JSON.stringify(rawBoxPreset));
-
   masterPath = initialMasterPath.map((p) => ({ x: p.x, y: p.y }));
   rawCursorPresets = initialCursorPresets.map((p) => normalizeRawCursorPreset(p));
   presets = buildCursorPresetsFromRaw(rawCursorPresets);
-  cursorRuns = computeCursorRuns(presets);
 
   txtBoxPresetEl.value = stringifyBoxPresetRaw(rawBoxPreset);
   txtCursorPresetsEl.value = JSON.stringify(rawCursorPresets, null, 2);
@@ -374,35 +169,40 @@ function setup() {
   document.getElementById("btnApplyCursor").addEventListener("click", applyCursorPresets);
   document.getElementById("btnResetCursor").addEventListener("click", resetCursorPresets);
 
+  if (cursorTypeSelectEl) {
+    cursorTypeSelectEl.addEventListener("change", () => {
+      // Switching shape mid-motion can jump the smoothed angle since the two
+      // shapes use different angle conventions — reset so it re-snaps clean.
+      liveCursorAngleRef.value = null;
+      rebuildBoxStepButtons();
+      rebuildCursorStepButtons();
+    });
+  }
+
   buildTimeline();
   rebuildBoxStepButtons();
   rebuildCursorStepButtons();
 
-
-
-
   // KEY PRESSES
-document.addEventListener("keydown", (e) => {
-  let inField = e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA";
+  document.addEventListener("keydown", (e) => {
+    let inField = e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA";
 
-  if (e.code === "Space" && !inField) {
-    e.preventDefault();
-    document.getElementById("btnAnim").click();
-    return;
-  }
-
-  if (!inField && e.key >= "0" && e.key <= "9") {
-    let i = Number(e.key);
-    let list = selectedComponent === "box" ? boxPreset : presets;
-    if (i < list.length) {
+    if (e.code === "Space" && !inField) {
       e.preventDefault();
-      if (selectedComponent === "box") showBoxStep(i);
-      else showCursorStep(i);
+      document.getElementById("btnAnim").click();
+      return;
     }
-  }
-});
 
-
+    if (!inField && e.key >= "0" && e.key <= "9") {
+      let i = Number(e.key);
+      let list = selectedComponent === "box" ? boxPreset : presets;
+      if (i < list.length) {
+        e.preventDefault();
+        if (selectedComponent === "box") showBoxStep(i);
+        else showCursorStep(i);
+      }
+    }
+  });
 }
 
 function makeStepThumbImg(elapsedMs) {
@@ -420,7 +220,6 @@ function makeStepThumbImg(elapsedMs) {
   thumb.src = renderThumbnailDataURL(elapsedMs);
   return thumb;
 }
-
 
 function applyBoxPresets() {
   let raw;
@@ -494,7 +293,6 @@ function applyCursorPresets() {
   cursorPresetErrorDivEl.textContent = "";
   rawCursorPresets = raw;
   presets = buildCursorPresetsFromRaw(rawCursorPresets);
-  cursorRuns = computeCursorRuns(presets);
 
   isCursorPlaying = false;
   isCursorFinished = false;
@@ -516,93 +314,70 @@ function resetCursorPresets() {
   applyCursorPresets();
 }
 
-// Returns the elapsed ms at which the animation actually *arrives* at step i
-// (i.e. the moment its hold phase begins).
+// Returns the elapsed ms at which the animation actually *arrives* at step i,
+// i.e. after that step's full move+hold (hold is now folded in as decel time,
+// not a separate frozen phase — see computeBoxValueAtElapsed / computeCursorValueAtElapsed).
 function stepArrivalTime(segs, i) {
   if (!segs || segs.length === 0) return 0;
   let idx = constrain(i, 0, segs.length - 1);
-  return segs[idx].segStart + segs[idx].firstDur;
+  return segs[idx].segStart + segs[idx].segTotal;
 }
 
-// Computes the box's interpolated state at any elapsed ms on the shared timeline.
-function computeBoxValueAtElapsed(elapsedMs) {
-  let status = sceneStatusAtElapsed(boxTimelineBar.segs, elapsedMs);
-  if (!status) return { ...boxPreset[0] };
-
-  if (status.phase === "END") return { ...boxPreset[boxPreset.length - 1] };
-
-  if (status.phase === "HOLD") {
-    return { ...boxPreset[status.index] };
+// Generic "move then freeze" sampler, shared by the box and the cursor.
+// `segs` comes from computeSegments(presetArr, false), which already lays
+// out each step as [move for its own `ms`][freeze for its own `hold`] — the
+// exact same structure the timeline UI displays. `pairLerpFn(p1, p2, t)`
+// does the property-specific interpolation for whichever preset array this is.
+function valueAtElapsedFromSegs(segs, presetArr, elapsedMs, pairLerpFn) {
+  if (!segs || segs.length === 0) return null;
+  for (let s of segs) {
+    let moveEnd = s.segStart + s.firstDur; // firstDur === move (ms) for holdFirst=false segs
+    let segEnd = s.segStart + s.segTotal;
+    if (elapsedMs < moveEnd) {
+      let p1 = presetArr[Math.max(0, s.index - 1)];
+      let p2 = presetArr[s.index];
+      let progress = s.firstDur > 0 ? constrain((elapsedMs - s.segStart) / s.firstDur, 0, 1) : 1;
+      progress = applyEasing(progress);
+      return pairLerpFn(p1, p2, progress);
+    }
+    if (elapsedMs < segEnd) {
+      // Past the move, inside this step's hold window — frozen at this step's values.
+      return pairLerpFn(presetArr[s.index], presetArr[s.index], 1);
+    }
   }
+  let last = presetArr[presetArr.length - 1];
+  return pairLerpFn(last, last, 1);
+}
 
-  // MOVE phase: transitioning from the previous step into status.index
-  let p0 = boxPreset[Math.max(0, status.index - 1)];
-  let p1 = boxPreset[status.index];
-  let progress = status.phaseDur > 0 ? constrain(status.phaseElapsed / status.phaseDur, 0, 1) : 1;
-  progress = applyEasing(progress);
-
+function lerpBoxPair(p1, p2, progress) {
   return {
-    rotX: lerp(p0.rotX, p1.rotX, progress),
-    rotY: lerp(p0.rotY, p1.rotY, progress),
-    rotZ: lerp(p0.rotZ, p1.rotZ, progress),
-    zoom: lerp(p0.zoom, p1.zoom, progress),
-    lightX: lerp(p0.lightX, p1.lightX, progress),
-    lightY: lerp(p0.lightY, p1.lightY, progress),
-    intensity: lerp(p0.intensity, p1.intensity, progress),
+    rotX: lerp(p1.rotX, p2.rotX, progress),
+    rotY: lerp(p1.rotY, p2.rotY, progress),
+    rotZ: lerp(p1.rotZ, p2.rotZ, progress),
+    zoom: lerp(p1.zoom, p2.zoom, progress),
+    lightX: lerp(p1.lightX, p2.lightX, progress),
+    lightY: lerp(p1.lightY, p2.lightY, progress),
+    intensity: lerp(p1.intensity, p2.intensity, progress),
   };
 }
 
+// Computes the box's interpolated state at any elapsed ms on the shared
+// timeline. `ms` is a pure move duration and `hold` is a pure freeze
+// afterward — they no longer blend into one long eased span.
+function computeBoxValueAtElapsed(elapsedMs) {
+  if (!boxPreset || boxPreset.length === 0) return {};
+  if (boxPreset.length === 1) return { ...boxPreset[0] };
+  let segs = computeSegments(boxPreset, false).segs;
+  return valueAtElapsedFromSegs(segs, boxPreset, elapsedMs, lerpBoxPair);
+}
+
+function boxTotalDurationMs() {
+  return boxPreset && boxPreset.length > 0 ? computeSegments(boxPreset, false).total : 0;
+}
+
 // Computes the cursor's interpolated state at any elapsed ms on the shared timeline.
-function computeCursorValueAtElapsed(elapsedMs) {
-  if (presets.length === 0) return null;
-  let status = sceneStatusAtElapsed(cursorTimelineBar.segs, elapsedMs);
-  if (!status) {
-    let first = presets[0];
-    let tan = pathTangentAt(first.pathIndex);
-    return { x: first.x, y: first.y, dx: tan.dx, dy: tan.dy, scale: first.scale, angleTwist: first.angleTwist,
-             rotX: first.rotX, rotY: first.rotY, rotZ: first.rotZ, cameraZoom: first.cameraZoom };
-  }
-
-  if (status.phase === "END") {
-    let last = presets[presets.length - 1];
-    let tan = pathTangentAt(last.pathIndex);
-    return { x: last.x, y: last.y, dx: tan.dx, dy: tan.dy, scale: last.scale, angleTwist: last.angleTwist,
-             rotX: last.rotX, rotY: last.rotY, rotZ: last.rotZ, cameraZoom: last.cameraZoom };
-  }
-
-  if (status.phase === "HOLD") {
-    let p1 = presets[status.index];
-    let p2 = presets[Math.min(status.index + 1, presets.length - 1)];
-    let tan = pathTangentAt(p1.pathIndex);
-    let dx = tan.dx, dy = tan.dy;
-    if (dx === 0 && dy === 0) {
-      dx = p2.x - p1.x;
-      dy = p2.y - p1.y;
-    }
-    return { x: p1.x, y: p1.y, dx, dy, scale: p1.scale,
-             angleTwist: p1.angleTwist, rotX: p1.rotX, rotY: p1.rotY, rotZ: p1.rotZ,
-             cameraZoom: p1.cameraZoom };
-  }
-
-  // MOVE phase: use run-based easing so scrubbing matches live playback —
-  // eased once across the whole zero-hold chain instead of per-segment.
-  let run = findRunForIndex(cursorRuns, status.index - 1);
-  let p1, p2, t;
-
-  if (run) {
-    let legOffset = runElapsedOffset(run, presets, status.index - 1);
-    let elapsedInRun = status.phaseElapsed + legOffset;
-    let sample = sampleRun(run, presets, elapsedInRun);
-    p1 = sample.p1;
-    p2 = sample.p2;
-    t = sample.t;
-  } else {
-    p1 = presets[Math.max(0, status.index - 1)];
-    p2 = presets[status.index];
-    let progress = status.phaseDur > 0 ? constrain(status.phaseElapsed / status.phaseDur, 0, 1) : 1;
-    t = applyEasing(progress);
-  }
-
+function cursorValueFromSample(sample) {
+  let { p1, p2, t } = sample;
   let rawIdx = map(t, 0, 1, p1.pathIndex, p2.pathIndex);
   let low = floor(rawIdx);
   let high = ceil(rawIdx);
@@ -634,15 +409,35 @@ function computeCursorValueAtElapsed(elapsedMs) {
     rotX: lerp(p1.rotX, p2.rotX, t),
     rotY: lerp(p1.rotY, p2.rotY, t),
     rotZ: lerp(p1.rotZ, p2.rotZ, t),
-    // NOTE: was `p2.cameraZoom` — that made scrubbing/thumbnails use the
-    // *target* step's camera-zoom flag while mid-transition, whereas live
-    // playback (getCurrentCursorCameraZoom) and the HOLD branch above both
-    // use the *departure* step's flag (p1) for the whole move. Whenever a
-    // step toggled cameraZoom, this mismatch put the cursor in the wrong
-    // coordinate frame (flat overlay vs. embedded in the box's 3D rotation)
-    // during scrubbing/thumbnails, which reads as "wrong rotation."
+    // NOTE: uses the *departure* step's cameraZoom flag for the whole leg
+    // (matches live playback and the old HOLD-branch behavior) so scrubbing
+    // and thumbnails don't flip coordinate frames mid-transition.
     cameraZoom: p1.cameraZoom,
   };
+}
+
+function lerpCursorPair(p1, p2, progress) {
+  return cursorValueFromSample({ p1, p2, t: progress });
+}
+
+// `ms` is a pure move duration, `hold` is a pure freeze afterward — same
+// model as the box. When frozen (p1 === p2), cursorValueFromSample naturally
+// falls back to the local path tangent for direction, since p2.pathIndex -
+// p1.pathIndex is zero.
+function computeCursorValueAtElapsed(elapsedMs) {
+  if (!presets || presets.length === 0) return null;
+  if (presets.length === 1) {
+    let p = presets[0];
+    let tan = pathTangentAt(p.pathIndex);
+    return { x: p.x, y: p.y, dx: tan.dx, dy: tan.dy, scale: p.scale, angleTwist: p.angleTwist,
+             rotX: p.rotX, rotY: p.rotY, rotZ: p.rotZ, cameraZoom: p.cameraZoom };
+  }
+  let segs = computeSegments(presets, false).segs;
+  return valueAtElapsedFromSegs(segs, presets, elapsedMs, lerpCursorPair);
+}
+
+function cursorTotalDurationMs() {
+  return presets && presets.length > 0 ? computeSegments(presets, false).total : 0;
 }
 
 // Clicking a box step seeks the *entire shared timeline* to that step's
@@ -889,9 +684,6 @@ function buildTimeline() {
   sharedPlayhead.style.zIndex = "99";
   sharedPlayhead.style.pointerEvents = "none";
   tracksWrapper.appendChild(sharedPlayhead);
-
-  // buildTimelineTable(box.segs, timelineContainerDivEl, "Box");
-  // buildTimelineTable(cursor.segs, timelineContainerDivEl, "Cursor");
 
   updateTimelinePlayheads();
 }
@@ -1179,231 +971,6 @@ function toggleCursor() {
   }
 }
 
-function animateBox() {
-  if (boxPlayIndex >= boxPreset.length - 1) {
-    isAnimating = false;
-    isBoxFinished = true;
-    return { ...boxPreset[boxPreset.length - 1] };
-  }
-
-  let p1 = boxPreset[boxPlayIndex];
-  let p2 = boxPreset[boxPlayIndex + 1];
-
-  if (!boxIsHolding && boxAnimStart === 0) {
-    boxIsHolding = true;
-    boxHoldStart = millis();
-  }
-
-  if (boxIsHolding) {
-    if (millis() - boxHoldStart >= p1.hold) {
-      boxIsHolding = false;
-      boxAnimStart = millis();
-    }
-    return { ...p1 };
-  }
-
-  let elapsed = millis() - boxAnimStart;
-  let progress = p2.ms > 0 ? map(elapsed, 0, p2.ms, 0, 1, true) : 1;
-  progress = applyEasing(progress);
-
-  let v = {
-    rotX: lerp(p1.rotX, p2.rotX, progress),
-    rotY: lerp(p1.rotY, p2.rotY, progress),
-    rotZ: lerp(p1.rotZ, p2.rotZ, progress),
-    zoom: lerp(p1.zoom, p2.zoom, progress),
-    lightX: lerp(p1.lightX, p2.lightX, progress),
-    lightY: lerp(p1.lightY, p2.lightY, progress),
-    intensity: lerp(p1.intensity, p2.intensity, progress),
-  };
-
-  if (progress >= 1) {
-    boxPlayIndex++;
-    boxIsHolding = true;
-    boxHoldStart = millis();
-    boxAnimStart = 0;
-  }
-
-  return v;
-}
-
-function drawCursorIcon(g, angleRef, x, y, dx, dy, scaleVal, angleTwist, rotX = 0, rotY = 0, rotZ = 0) {
-  if (dx === 0 && dy === 0) {
-    if (angleRef.value === null) angleRef.value = -CURSOR_TIP_ANGLE;
-  } else {
-    let theta = atan2(dy, dx);
-    let targetAngle = theta - CURSOR_TIP_ANGLE;
-    if (angleRef.value === null) angleRef.value = targetAngle;
-    else angleRef.value = lerpAngle(angleRef.value, targetAngle, ANGLE_SMOOTHING);
-  }
-
-  // CURSOR STROKE WIDTH
-  csw = 2;
-
-  g.push();
-  g.translate(x, y, 0);
-  g.rotateX(rotX);
-  g.rotateY(rotY);
-  g.rotateZ(angleRef.value + angleTwist + rotZ);
-  g.scale(scaleVal);
-  g.stroke(255);
-  g.strokeWeight(1/2 * scaleVal * csw);
-  g.fill(0);
-  g.beginShape();
-  for (let p of CURSOR_POINTS) g.vertex(p.x, p.y);
-  g.endShape(CLOSE);
-  g.pop();
-}
-
-
-// function drawCursorIcon(g, angleRef, x, y, dx, dy, scaleVal, angleTwist, rotX = 0, rotY = 0, rotZ = 0) {
-//   if (dx === 0 && dy === 0) {
-//     if (angleRef.value === null) angleRef.value = 0;
-//   } else {
-//     let targetAngle = atan2(dy, dx);
-//     if (angleRef.value === null) angleRef.value = targetAngle;
-//     else angleRef.value = lerpAngle(angleRef.value, targetAngle, ANGLE_SMOOTHING);
-//   }
-
-//   g.push();
-//   g.translate(x, y, 0);
-//   g.rotateX(rotX);
-//   g.rotateY(rotY);
-//   g.rotateZ(angleRef.value + angleTwist + rotZ + 90);
-//   g.scale(scaleVal);
-
-//   // hand outline — white fill, black stroke
-//   g.stroke(0);
-//   g.strokeWeight(0.75 * scaleVal);
-//   g.fill(255);
-//   g.beginShape();
-//   for (let p of HAND_POINTS) g.vertex(p.x, p.y);
-//   g.endShape(CLOSE);
-
-//   // finger crease lines
-//   g.stroke(0);
-//   g.strokeWeight(0.75 * scaleVal);
-//   g.noFill();
-//   for (let l of HAND_FINGER_LINES) g.line(l.x1, l.y1, l.x2, l.y2);
-
-//   g.pop();
-// }
-
-
-function animateCursor() {
-  if (cursorPlayIndex >= presets.length - 1) {
-    isCursorPlaying = false;
-    isCursorFinished = true;
-    return;
-  }
-
-  let p1 = presets[cursorPlayIndex];
-  let p2 = presets[cursorPlayIndex + 1];
-
-  if (!cursorIsHolding && cursorStartTime === 0) {
-    if (p1.hold > 0) {
-      cursorIsHolding = true;
-      cursorHoldStart = millis();
-    } else {
-      cursorStartTime = millis(); // skip the hold entirely, go straight to motion
-    }
-  }
-
-  if (cursorIsHolding) {
-    let holdTan = pathTangentAt(p1.pathIndex);
-    let holdDx = holdTan.dx, holdDy = holdTan.dy;
-    if (holdDx === 0 && holdDy === 0) {
-      holdDx = p2.x - p1.x;
-      holdDy = p2.y - p1.y;
-    }
-    drawCursorIcon(window, liveCursorAngleRef, p1.x, p1.y, holdDx, holdDy, p1.scale, p1.angleTwist, p1.rotX, p1.rotY, p1.rotZ);
-    if (millis() - cursorHoldStart >= p1.hold) {
-      cursorIsHolding = false;
-      cursorStartTime = millis();
-    }
-    return;
-  }
-
-  let run = findRunForIndex(cursorRuns, cursorPlayIndex);
-  let t, runFinished;
-
-  if (run) {
-    let elapsedInRun = millis() - cursorStartTime + runElapsedOffset(run, presets, cursorPlayIndex);
-    let sample = sampleRun(run, presets, elapsedInRun);
-    p1 = sample.p1;
-    p2 = sample.p2;
-    t = sample.t;
-    runFinished = sample.runFinished;
-  } else {
-    // shouldn't normally happen (every non-held step belongs to some run),
-    // but fall back to the old per-segment behavior just in case
-    let elapsed = millis() - cursorStartTime;
-    let progress = p2.ms > 0 ? map(elapsed, 0, p2.ms, 0, 1, true) : 1;
-    t = applyEasing(progress);
-    runFinished = t >= 1;
-  }
-
-  let rawIdx = map(t, 0, 1, p1.pathIndex, p2.pathIndex);
-  let low = floor(rawIdx);
-  let high = ceil(rawIdx);
-  let frac = rawIdx - low;
-
-  let pA = masterPath[constrain(low, 0, masterPath.length - 1)];
-  let pB = masterPath[constrain(high, 0, masterPath.length - 1)];
-
-  let posX = lerp(pA.x, pB.x, frac);
-  let posY = lerp(pA.y, pB.y, frac);
-
-  // See computeCursorValueAtElapsed for why this no longer special-cases
-  // p1.pathIndex === p2.pathIndex — the tangent-based lookup degrades
-  // gracefully to "direction at that single point" instead of "no direction."
-  let behind = masterPath[constrain(low - DIR_LOOKAHEAD, 0, masterPath.length - 1)];
-  let ahead = masterPath[constrain(high + DIR_LOOKAHEAD, 0, masterPath.length - 1)];
-  let dx = ahead.x - behind.x;
-  let dy = ahead.y - behind.y;
-  if (dx === 0 && dy === 0) {
-    dx = p2.x - p1.x;
-    dy = p2.y - p1.y;
-  }
-
-  let currentScale = lerp(p1.scale, p2.scale, t);
-  let currentTwist = lerp(p1.angleTwist, p2.angleTwist, t);
-  let currentRotX = lerp(p1.rotX, p2.rotX, t);
-  let currentRotY = lerp(p1.rotY, p2.rotY, t);
-  let currentRotZ = lerp(p1.rotZ, p2.rotZ, t);
-
-  drawCursorIcon(window, liveCursorAngleRef, posX, posY, dx, dy, currentScale, currentTwist, currentRotX, currentRotY, currentRotZ);
-
-  if (runFinished) {
-    // Jump straight to the run's true end index — NOT +1 — because the run
-    // sampler may have already been rendering a leg several steps ahead of
-    // cursorPlayIndex (it picks legs by absolute elapsed time, not by walking
-    // step-by-step). Incrementing by 1 here left cursorPlayIndex behind the
-    // actual finished position, causing the remaining legs to play a second time.
-    cursorPlayIndex = run ? run.endIndex : cursorPlayIndex + 1;
-    let next = presets[cursorPlayIndex];
-    if (next.hold > 0) {
-      cursorIsHolding = true;
-      cursorHoldStart = millis();
-      cursorStartTime = 0;
-    } else {
-      // no hold on the next step — carry straight into its move phase
-      cursorIsHolding = false;
-      cursorStartTime = millis();
-    }
-  }
-}
-
-function getCurrentCursorCameraZoom() {
-  if (presets.length === 0) return false;
-  if (isSeeking) {
-    let cv = computeCursorValueAtElapsed(seekElapsedMs);
-    return cv ? !!cv.cameraZoom : false;
-  }
-  if (isCursorPlaying) return !!presets[cursorPlayIndex].cameraZoom;
-  if (isCursorFinished) return !!presets[presets.length - 1].cameraZoom;
-  return !!presets[0].cameraZoom;
-}
-
 // Renders a single still frame of the combined scene (box + cursor) at the
 // given elapsed ms on the shared timeline into the offscreen thumbnail
 // buffer, and returns it as a data URL. Mirrors draw()'s logic but targets
@@ -1459,7 +1026,8 @@ function renderThumbnailDataURL(elapsedMs) {
 
   thumbCursorAngleRef.value = null; // fresh snap, no smoothing carried over between thumbnails
   if (cv) {
-    drawCursorIcon(buf, thumbCursorAngleRef, cv.x, cv.y, cv.dx, cv.dy, cv.scale, cv.angleTwist, cv.rotX, cv.rotY, cv.rotZ);
+    let cursorType = cursorTypeSelectEl ? cursorTypeSelectEl.value : "arrow";
+    drawCursorIcon(buf, thumbCursorAngleRef, cv.x, cv.y, cv.dx, cv.dy, cv.scale, cv.angleTwist, cv.rotX, cv.rotY, cv.rotZ, cursorType);
   }
 
   buf.pop();
@@ -1488,7 +1056,14 @@ function draw() {
     sldLightYEl.value = targetLY;
     sldIntensityEl.value = targetInt;
   } else if (isAnimating) {
-    let v = animateBox();
+    let elapsed = millis() - playbackClockStart;
+    let totalDur = boxTotalDurationMs();
+    if (elapsed >= totalDur) {
+      elapsed = totalDur;
+      isAnimating = false;
+      isBoxFinished = true;
+    }
+    let v = computeBoxValueAtElapsed(elapsed);
     targetRotX = v.rotX;
     targetRotY = v.rotY;
     targetRotZ = v.rotZ;
@@ -1555,7 +1130,31 @@ function draw() {
     pop();
   }
 
-  let cursorCameraZoom = getCurrentCursorCameraZoom();
+  // Figure out this frame's cursor value once, then reuse it both for the
+  // cameraZoom flag and for the actual draw call below.
+  let cv = null;
+  if (isSeeking) {
+    cv = computeCursorValueAtElapsed(seekElapsedMs);
+  } else if (isCursorPlaying) {
+    let cElapsed = millis() - cursorPlaybackClockStart;
+    let cTotalDur = cursorTotalDurationMs();
+    if (cElapsed >= cTotalDur) {
+      cElapsed = cTotalDur;
+      isCursorPlaying = false;
+      isCursorFinished = true;
+    }
+    cv = computeCursorValueAtElapsed(cElapsed);
+  } else if (isCursorFinished && presets.length > 0) {
+    let last = presets[presets.length - 1];
+    cv = { x: last.x, y: last.y, dx: 0, dy: 0, scale: last.scale, angleTwist: last.angleTwist,
+           rotX: last.rotX, rotY: last.rotY, rotZ: last.rotZ, cameraZoom: last.cameraZoom };
+  } else if (presets.length > 0) {
+    let first = presets[0];
+    cv = { x: first.x, y: first.y, dx: 0, dy: 0, scale: first.scale, angleTwist: first.angleTwist,
+           rotX: first.rotX, rotY: first.rotY, rotZ: first.rotZ, cameraZoom: first.cameraZoom };
+  }
+
+  let cursorCameraZoom = cv ? !!cv.cameraZoom : false;
   if (!cursorCameraZoom) {
     resetMatrix();
     camera();
@@ -1575,18 +1174,9 @@ function draw() {
     endShape();
   }
 
-  if (isSeeking) {
-    let cv = computeCursorValueAtElapsed(seekElapsedMs);
-    if (cv) drawCursorIcon(window, liveCursorAngleRef, cv.x, cv.y, cv.dx, cv.dy, cv.scale, cv.angleTwist, cv.rotX, cv.rotY, cv.rotZ);
-  } else {
-    if (isCursorPlaying) animateCursor();
-    if (isCursorFinished) {
-      let last = presets[presets.length - 1];
-      drawCursorIcon(window, liveCursorAngleRef, last.x, last.y, 0, 0, last.scale, last.angleTwist, last.rotX, last.rotY, last.rotZ);
-    } else if (!isCursorPlaying && !isCursorFinished && presets.length > 0) {
-      let first = presets[0];
-      drawCursorIcon(window, liveCursorAngleRef, first.x, first.y, 0, 0, first.scale, first.angleTwist, first.rotX, first.rotY, first.rotZ);
-    }
+  if (cv) {
+    let cursorType = cursorTypeSelectEl ? cursorTypeSelectEl.value : "arrow";
+    drawCursorIcon(window, liveCursorAngleRef, cv.x, cv.y, cv.dx, cv.dy, cv.scale, cv.angleTwist, cv.rotX, cv.rotY, cv.rotZ, cursorType);
   }
 
   pop();
@@ -1759,9 +1349,12 @@ function rebuildCursorStepButtons() {
   }
 }
 
-
 // EASINGS
 function loadEasings() {
+  function easeInOutSine(t) {
+  return -(Math.cos(Math.PI * t) - 1) / 2;
+}
+
   function easeInOutQuad(x) {
     return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
   }
@@ -1819,6 +1412,7 @@ function loadEasings() {
   }
   return {
     Smooth: easeInOutQuad,
+    Sine: easeInOutSine,   // add this
     Snappy: easeOutExpo,
     Elastic: easeOutElastic,
     Overshoot: overshoot,
@@ -1834,7 +1428,3 @@ function applyEasing(t) {
   let fn = easings && easingSelect ? easings[easingSelect.value] : null;
   return typeof fn === "function" ? fn(t) : t;
 }
-
-
-
-

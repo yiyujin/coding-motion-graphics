@@ -22,8 +22,8 @@ const initialBoxPreset =
     "lightX": -300,
     "lightY": 350,
     "intensity": 235,
-    "ms": 450,
-    "hold": 150
+    "ms": 350,
+    "hold": 300
   },
   {
     "rotX": 6.683185307179587,
