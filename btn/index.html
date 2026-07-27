@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <title>Button Click</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/p5@2.3.0/lib/p5.min.js"></script>
 <link rel="stylesheet" type="text/css" href="style.css">
 </head>
 <body>
@@ -58,7 +58,7 @@
                     <h3>Text</h3>
                     <div>
                         <p>Text</p>
-                        <input type="text" id="txtInput" value="Button" />
+                        <input type="text" id="txtInput" value="Generate" />
                     </div>
                     <div style = "display: flex; flex-direction: row; align-items: center; gap : 2px; padding : 4px;">
                         <p>Color</p>
@@ -75,22 +75,66 @@
                     </div>
                 </div>
                 <div class = "chunk">
-                    <h3>Light</h3>
+                    <h3>Lighting</h3>
                     <div>
-                        <p>X Position</p>
-                        <input type="range" id="sldLightX" min="-600" max="600" value="-300" />
+                        <p>Ambient Intensity</p>
+                        <input type="range" id="sldAmbient" min="0" max="255" value="50" />
                     </div>
-                    <div>
-                        <p>Y Position</p>
-                        <input type="range" id="sldLightY" min="-600" max="600" value="350" />
-                    </div>
+                </div>
+                <div class = "chunk">
+                    <h3>Directional Light 1</h3>
                     <div>
                         <p>Intensity</p>
-                        <input type="range" id="sldIntensity" min="0" max="500" value="235" />
+                        <input type="range" id="sldDir1Intensity" min="0" max="255" value="255" />
                     </div>
-      
                     <div>
-                        <p>Show Path</p>
+                        <p>Direction X</p>
+                        <input type="range" id="sldDir1X" min="-1" max="1" step="0.01" value="0" />
+                    </div>
+                    <div>
+                        <p>Direction Y</p>
+                        <input type="range" id="sldDir1Y" min="-1" max="1" step="0.01" value="1" />
+                    </div>
+                    <div>
+                        <p>Direction Z</p>
+                        <input type="range" id="sldDir1Z" min="-1" max="1" step="0.01" value="-1" />
+                    </div>
+                </div>
+                <div class = "chunk">
+                    <h3>Directional Light 2</h3>
+                    <div>
+                        <p>Intensity</p>
+                        <input type="range" id="sldDir2Intensity" min="0" max="255" value="255" />
+                    </div>
+                    <div>
+                        <p>Direction X</p>
+                        <input type="range" id="sldDir2X" min="-1" max="1" step="0.01" value="-1" />
+                    </div>
+                    <div>
+                        <p>Direction Y</p>
+                        <input type="range" id="sldDir2Y" min="-1" max="1" step="0.01" value="0.5" />
+                    </div>
+                    <div>
+                        <p>Direction Z</p>
+                        <input type="range" id="sldDir2Z" min="-1" max="1" step="0.01" value="-0.2" />
+                    </div>
+                </div>
+                <div class = "chunk">
+                    <h3>Glass Material</h3>
+                    <div>
+                        <p>Alpha</p>
+                        <input type="range" id="sldGlassAlpha" min="0" max="255" value="100" />
+                    </div>
+                    <div>
+                        <p>Shininess</p>
+                        <input type="range" id="sldGlassShininess" min="0" max="500" value="200" />
+                    </div>
+                    <div>
+                        <p>Edge Emissive Intensity</p>
+                        <input type="range" id="sldEmissive" min="0" max="5" step="0.01" value="1" />
+                    </div>
+                    <div>
+                        <p>Visualize Light Directions</p>
                         <input type="checkbox" id="chkVisualize" />
                     </div>
                 </div>
@@ -157,6 +201,12 @@
 </div>
 
 </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@davepagurek/bezier-path@0.0.8"></script>
+  <script src = "smoothExtrude.js"></script>
+
+  <script src = "loadEasings.js"></script>
+  
 
 <script src="boxPresets.js"></script>
 <script src="cursorPresets.js"></script>

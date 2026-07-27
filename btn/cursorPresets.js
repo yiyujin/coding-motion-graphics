@@ -20,7 +20,7 @@ const initialCursorPresets =
     "rotX": 0,
     "rotY": 0,
     "rotZ": 0,
-    "ms": 300,
+    "ms": 450,
     "hold": 0,
     "cameraZoom": false
   },
@@ -38,7 +38,7 @@ const initialCursorPresets =
   },
   {
     "id": 4,
-    "pathIndex": 130,
+    "pathIndex": 131,
     "scale": 2,
     "angleTwist": -1.2,
     "rotX": 0,
@@ -50,8 +50,8 @@ const initialCursorPresets =
   },
   {
     "id": 5,
-    "pathIndex": 130,
-    "scale": 3,
+    "pathIndex": 132,
+    "scale": 4,
     "angleTwist": -1.2,
     "rotX": 0,
     "rotY": 0,
@@ -62,25 +62,25 @@ const initialCursorPresets =
   },
   {
     "id": 5,
-    "pathIndex": 130,
-    "scale": 4,
+    "pathIndex": 133,
+    "scale": 5,
     "angleTwist": -1.2,
     "rotX": 0,
     "rotY": 0,
     "rotZ": 0,
-    "ms": 300,
+    "ms": 650,
     "hold": 0,
     "cameraZoom": true
   },
   {
     "id": 5,
-    "pathIndex": 130,
-    "scale": 4,
+    "pathIndex": 134,
+    "scale": 2,
     "angleTwist": -1.2,
     "rotX": 0,
     "rotY": 0,
     "rotZ": 0,
-    "ms": 50,
+    "ms": 0,
     "hold": 0,
     "cameraZoom": true
   }

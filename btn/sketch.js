@@ -1,4 +1,5 @@
 let w = 330, h = 120, d = 20, r = 60;
+const BOX_BEVEL = 3; // bevel size/thickness used for the extruded box model below
 
 const TIMELINE_TRACK_PX = 535;
 
@@ -14,6 +15,13 @@ let playbackClockStart = 0;
 let boxPreviewStepIndex = 0;
 let cursorPreviewStepIndex = 0;
 
+// Tracks whichever step thumbnail the user last clicked (box or cursor), so
+// that pressing Apply on either preset's textarea re-seeks back to that same
+// frame using the freshly-applied values, instead of resetting to the idle
+// default view. Cleared whenever playback starts (toggleBox/toggleCursor).
+let lastSelectedStepKind = null; // "box" | "cursor" | null
+let lastSelectedStepIndex = 0;
+
 // Unified seeking state — replaces the old isBoxPreviewMode / isCursorPreviewMode split.
 // When isSeeking is true, both the box and the cursor render whatever their
 // interpolated state would be at seekElapsedMs on the shared timeline.
@@ -25,6 +33,11 @@ let defaultBoxPresetRaw = [];
 
 let masterPath = [];
 let presets = [];
+// A "run" is a maximal chain of consecutive cursor presets connected by
+// hold === 0 on the arriving preset. Easing is applied once across the
+// whole run instead of once per leg, so waypoints in the middle of a run
+// don't decelerate to near-zero speed (which reads as an unwanted pause).
+let cursorRuns = [];
 let isCursorPlaying = false;
 let isCursorFinished = false;
 let cursorPlayIndex = 0;
@@ -50,16 +63,59 @@ let selectedComponent = "box"; // "box" | "cursor" — determines which step num
 let initialBoxPresetJson = [];
 let rawCursorPresets = [];
 
-let txtInputEl, sldLightXEl, sldLightYEl, sldIntensityEl, colorPickerEl, chkVisualizeEl, chkShowPathEl;
+let txtInputEl, colorPickerEl, chkVisualizeEl, chkShowPathEl;
+let sldAmbientEl;
+let sldDir1IntensityEl, sldDir1XEl, sldDir1YEl, sldDir1ZEl;
+let sldDir2IntensityEl, sldDir2XEl, sldDir2YEl, sldDir2ZEl;
+let sldGlassAlphaEl, sldGlassShininessEl, sldEmissiveEl;
 let boxStepBtnContainerEl, boxStepInfoDivEl, cursorStepBtnContainerEl, cursorStepInfoDivEl;
 let txtBoxPresetEl, boxPresetErrorDivEl, txtCursorPresetsEl, cursorPresetErrorDivEl;
 let timelineContainerDivEl;
 let sharedPlayhead;
 let cursorTypeSelectEl;
 
-function preload(){
-  font = loadFont("Roboto-Regular.ttf");
-};
+// BOX MODEL
+// The box is now an extruded, beveled rounded-rect built the same way the
+// "Generate" button demo builds its geometry: BezierPath traces the rounded
+// rect outline, then smoothExtrude.js's extrudeContours() extrudes+bevels it
+// into a p5.Geometry. A Material Hook shader (buildMaterialShader) gives it
+// a glassy edge highlight instead of the old flat specularMaterial() look.
+// Both are built once in setup() since w/h/d/r/BOX_BEVEL are fixed constants.
+let boxModel;
+let glassShader;
+
+// The glassShader Material Hook (built once below) reads this every frame to
+// drive its edge-emissive rim-light strength. Referencing an outer JS
+// variable inside a Material Hook makes it a live uniform that p5 re-reads
+// before each draw — same mechanism the reference sketch uses via
+// `sliderEmissiveIntensity.value()`. We use a getter function for the same
+// reason the reference does: a function call is the pattern known to work.
+let currentEmissiveIntensity = 1;
+function getEmissiveIntensity() {
+  return currentEmissiveIntensity;
+}
+
+// TEXT-ON-FACE TEXTURE
+// Instead of drawing text() directly onto the WEBGL box face (which reads as a
+// flat, faceted overlay), we render the label into an offscreen 2D graphics
+// buffer once, then texture a plane with it — same approach as rendering text
+// onto a p5.Graphics canvas and mapping it onto a plane() in front of the box.
+let textTexture;
+let lastRenderedText = null;
+const TEXT_TEX_SCALE = 3; // supersample the texture so text stays crisp
+
+function updateTextTexture(str) {
+  if (!textTexture) return;
+  textTexture.clear();
+  textTexture.background(0, 0); // transparent
+  textTexture.noStroke();
+  textTexture.fill(255);
+  textTexture.textAlign(CENTER, CENTER);
+  textTexture.textFont(font);
+  textTexture.textSize(40 * TEXT_TEX_SCALE);
+  textTexture.text(str, textTexture.width / 2, textTexture.height / 2);
+  lastRenderedText = str;
+}
 
 function lerpAngle(current, target, amt) {
   let diff = ((((target - current + PI) % TWO_PI) + TWO_PI) % TWO_PI) - PI;
@@ -81,12 +137,63 @@ function normalizeBoxPreset(p) {
     rotY: typeof p.rotY === "number" ? p.rotY : 0,
     rotZ: typeof p.rotZ === "number" ? p.rotZ : 0,
     zoom: typeof p.zoom === "number" ? p.zoom : 1000,
-    lightX: typeof p.lightX === "number" ? p.lightX : 0,
-    lightY: typeof p.lightY === "number" ? p.lightY : 0,
-    intensity: typeof p.intensity === "number" ? p.intensity : 235,
+    // Ambient
+    ambientIntensity: typeof p.ambientIntensity === "number" ? p.ambientIntensity : 50,
+    // Directional light 1 (intensity + normalized-ish direction vector)
+    dir1Intensity: typeof p.dir1Intensity === "number" ? p.dir1Intensity : 255,
+    dir1X: typeof p.dir1X === "number" ? p.dir1X : 0,
+    dir1Y: typeof p.dir1Y === "number" ? p.dir1Y : 1,
+    dir1Z: typeof p.dir1Z === "number" ? p.dir1Z : -1,
+    // Directional light 2
+    dir2Intensity: typeof p.dir2Intensity === "number" ? p.dir2Intensity : 255,
+    dir2X: typeof p.dir2X === "number" ? p.dir2X : -1,
+    dir2Y: typeof p.dir2Y === "number" ? p.dir2Y : 0.5,
+    dir2Z: typeof p.dir2Z === "number" ? p.dir2Z : -0.2,
+    // Glass material
+    glassAlpha: typeof p.glassAlpha === "number" ? p.glassAlpha : 100,
+    glassShininess: typeof p.glassShininess === "number" ? p.glassShininess : 200,
+    emissiveIntensity: typeof p.emissiveIntensity === "number" ? p.emissiveIntensity : 1,
     ms: typeof p.ms === "number" ? p.ms : 0,
     hold: typeof p.hold === "number" ? p.hold : 0,
   };
+}
+
+// Reads the current values off the lighting sliders into a plain object
+// shaped like a box preset entry's lighting fields. Used as the "manual
+// override" source when nothing is animating/seeking (see draw()'s idle
+// branch and computeBoxValueAtElapsed()'s counterparts).
+function readLightSliders() {
+  return {
+    ambientIntensity: Number(sldAmbientEl.value),
+    dir1Intensity: Number(sldDir1IntensityEl.value),
+    dir1X: Number(sldDir1XEl.value),
+    dir1Y: Number(sldDir1YEl.value),
+    dir1Z: Number(sldDir1ZEl.value),
+    dir2Intensity: Number(sldDir2IntensityEl.value),
+    dir2X: Number(sldDir2XEl.value),
+    dir2Y: Number(sldDir2YEl.value),
+    dir2Z: Number(sldDir2ZEl.value),
+    glassAlpha: Number(sldGlassAlphaEl.value),
+    glassShininess: Number(sldGlassShininessEl.value),
+    emissiveIntensity: Number(sldEmissiveEl.value),
+  };
+}
+
+// Pushes a box-preset-shaped value's lighting fields back onto the sliders,
+// so the UI always reflects whatever frame is currently being displayed.
+function syncLightSlidersFrom(v) {
+  sldAmbientEl.value = v.ambientIntensity;
+  sldDir1IntensityEl.value = v.dir1Intensity;
+  sldDir1XEl.value = v.dir1X;
+  sldDir1YEl.value = v.dir1Y;
+  sldDir1ZEl.value = v.dir1Z;
+  sldDir2IntensityEl.value = v.dir2Intensity;
+  sldDir2XEl.value = v.dir2X;
+  sldDir2YEl.value = v.dir2Y;
+  sldDir2ZEl.value = v.dir2Z;
+  sldGlassAlphaEl.value = v.glassAlpha;
+  sldGlassShininessEl.value = v.glassShininess;
+  sldEmissiveEl.value = v.emissiveIntensity;
 }
 
 function buildBoxPresetFromRaw(raw) {
@@ -117,11 +224,125 @@ function buildCursorPresetsFromRaw(raw) {
   });
 }
 
-function setup() {
+// A "run" is a maximal chain of consecutive presets connected by hold === 0
+// on the *arriving* preset. Easing is applied once across the whole run,
+// not per-segment, so waypoints in the middle of a run don't decelerate to zero.
+function computeCursorRuns(presetArr) {
+  let runs = [];
+  let i = 0;
+  while (i < presetArr.length - 1) {
+    let start = i;
+    let totalMs = 0;
+    while (i < presetArr.length - 1) {
+      totalMs += presetArr[i + 1].ms;
+      i++;
+      if (presetArr[i].hold > 0 || i >= presetArr.length - 1) break;
+    }
+    runs.push({ startIndex: start, endIndex: i, totalMs });
+  }
+  return runs;
+}
+
+const WAYPOINT_LINGER = 0.6;
+
+// Blends a leg's raw linear progress with the currently selected easing
+// curve (from the Easing dropdown) by WAYPOINT_LINGER.
+function applyWaypointEase(t) {
+  let eased = applyEasing(t);
+  return lerp(t, eased, WAYPOINT_LINGER);
+}
+
+// Given a run and an elapsed time measured from the run's start, returns
+// which leg (p1 -> p2) we're in and the eased t within that leg. Each leg
+// is located using linear (real) time, and gets the actual selected easing
+// curve applied to just itself, blended with linear via WAYPOINT_LINGER so
+// motion stays continuous (non-zero velocity) through interior waypoints
+// instead of hard-stopping at every one of them.
+function sampleRun(run, presetArr, elapsedInRun) {
+  let clamped = constrain(elapsedInRun, 0, run.totalMs);
+  let runFinished = elapsedInRun >= run.totalMs;
+
+  let acc = 0;
+  for (let idx = run.startIndex; idx < run.endIndex; idx++) {
+    let legMs = presetArr[idx + 1].ms;
+    if (clamped <= acc + legMs || idx === run.endIndex - 1) {
+      let legT = legMs > 0 ? (clamped - acc) / legMs : 1;
+      legT = constrain(legT, 0, 1);
+      legT = applyWaypointEase(legT);
+      return { p1: presetArr[idx], p2: presetArr[idx + 1], t: legT, runFinished };
+    }
+    acc += legMs;
+  }
+  // fallback (shouldn't hit, but keeps things defined)
+  let lastIdx = run.endIndex - 1;
+  return { p1: presetArr[lastIdx], p2: presetArr[run.endIndex], t: 1, runFinished: true };
+}
+
+// Finds which run (if any) a given preset index belongs to, i.e. the run
+// whose startIndex <= index < endIndex.
+function findRunForIndex(runs, index) {
+  for (let r of runs) {
+    if (index >= r.startIndex && index < r.endIndex) return r;
+  }
+  return null;
+}
+
+// How much time (ms) has already elapsed *within this run* before the leg
+// starting at currentIndex began — needed because the run's easing needs
+// continuous elapsed-in-run time, not just the current leg's own elapsed time.
+function runElapsedOffset(run, presetArr, currentIndex) {
+  let offset = 0;
+  for (let idx = run.startIndex; idx < currentIndex; idx++) {
+    offset += presetArr[idx + 1].ms;
+  }
+  return offset;
+}
+
+async function setup() {
+  // p5 2.0+ supports async setup(), so assets can be awaited directly here
+  // instead of using the older preload() lifecycle function.
+  font = await loadFont("Roboto-Regular.ttf");
+
   let cnv = createCanvas(600, 600, WEBGL);
   document.getElementById("canvas-container").appendChild(cnv.elt);
 
-  initCursorTypes(); // from cursor-types.js — samples hand SVG points, precomputes tip angles
+  // Build the box geometry: trace a rounded-rect outline with BezierPath
+  // (same w/h/r dimensions the box always used), then extrude+bevel it via
+  // smoothExtrude.js's extrudeContours(). Wrapped in a block so the local
+  // path-building variables (k, controlDist, pts, etc.) don't leak globally.
+  {
+    const k = 0.552284749831; // https://stackoverflow.com/a/27863181
+    const controlDist = r * k;
+    let path = BezierPath.create([
+      { pt: createVector(-w / 2 + r, -h / 2) },
+      { pt: createVector(w / 2 - r, -h / 2), right: createVector(w / 2 - r + controlDist, -h / 2) },
+      { left: createVector(w / 2, -controlDist), pt: createVector(w / 2, 0), right: createVector(w / 2, controlDist) },
+      { left: createVector(w / 2 - r + controlDist, h / 2), pt: createVector(w / 2 - r, h / 2) },
+      { pt: createVector(-w / 2 + r, h / 2), right: createVector(-w / 2 + r - controlDist, h / 2) },
+      { left: createVector(-w / 2, controlDist), pt: createVector(-w / 2, 0), right: createVector(-w / 2, -controlDist) },
+      { left: createVector(-w / 2 + r - controlDist, -h / 2), pt: createVector(-w / 2 + r, -h / 2) },
+    ]);
+    const numPts = ceil(path.getTotalLength() / 2);
+    const pts = [];
+    for (let i = 0; i < numPts; i++) {
+      const pt = path.getPointAtLength(map(i, 0, numPts, 0, path.getTotalLength()));
+      pts.push(createVector(pt.x, pt.y));
+    }
+    boxModel = extrudeContours([pts], { dist: d, bevel: BOX_BEVEL });
+  }
+
+  // Glass-look Material Hook shader: dims alpha and adds a fresnel-style
+  // emissive highlight based on how much a surface faces the camera vs. its
+  // edges, giving the box the same glassy rim-light look as the button demo.
+  glassShader = buildMaterialShader(() => {
+    pixelInputs.begin();
+    pixelInputs.color.a *= lerp(1 - abs(pixelInputs.normal.z), 1, 0.5);
+    let emMult = getEmissiveIntensity();
+    pixelInputs.emissiveMaterial += [emMult, emMult, emMult] * pow(1 - abs(pixelInputs.normal.z), 2);
+    pixelInputs.end();
+  });
+
+  await initCursorTypes(); // from cursor-types.js — samples hand SVG points, precomputes tip angles (awaited in case it loads/parses SVG data asynchronously)
 
   rawBoxPreset = initialBoxPreset.map(normalizeBoxPreset);
   boxPreset = buildBoxPresetFromRaw(rawBoxPreset);
@@ -133,9 +354,18 @@ function setup() {
   thumbBuffer.textFont(font);
 
   txtInputEl = document.getElementById("txtInput");
-  sldLightXEl = document.getElementById("sldLightX");
-  sldLightYEl = document.getElementById("sldLightY");
-  sldIntensityEl = document.getElementById("sldIntensity");
+  sldAmbientEl = document.getElementById("sldAmbient");
+  sldDir1IntensityEl = document.getElementById("sldDir1Intensity");
+  sldDir1XEl = document.getElementById("sldDir1X");
+  sldDir1YEl = document.getElementById("sldDir1Y");
+  sldDir1ZEl = document.getElementById("sldDir1Z");
+  sldDir2IntensityEl = document.getElementById("sldDir2Intensity");
+  sldDir2XEl = document.getElementById("sldDir2X");
+  sldDir2YEl = document.getElementById("sldDir2Y");
+  sldDir2ZEl = document.getElementById("sldDir2Z");
+  sldGlassAlphaEl = document.getElementById("sldGlassAlpha");
+  sldGlassShininessEl = document.getElementById("sldGlassShininess");
+  sldEmissiveEl = document.getElementById("sldEmissive");
   colorPickerEl = document.getElementById("colorPicker");
   chkVisualizeEl = document.getElementById("chkVisualize");
   chkShowPathEl = document.getElementById("chkShowPath");
@@ -150,6 +380,22 @@ function setup() {
   timelineContainerDivEl = document.getElementById("timelineContainerDiv");
   cursorTypeSelectEl = document.getElementById("selCursorType");
 
+  // Sync the lighting sliders to the box preset's first step, rather than
+  // leaving them at whatever the HTML markup happened to hard-code. This
+  // matters because draw()'s idle state (see below) uses these slider
+  // values as the "current" lighting rig, so on load they need to agree
+  // with boxPreset[0] or the box will render different lighting than the
+  // preset specifies until you press Play or click a step.
+  syncLightSlidersFrom(boxPreset[0]);
+
+  // Offscreen 2D-style texture for the box-face label. We render the text
+  // once here (and again whenever the input changes) into a p5.Graphics
+  // buffer, then texture a plane() with it in draw() instead of calling
+  // text() directly in the lit WEBGL scene.
+  textTexture = createGraphics(w * TEXT_TEX_SCALE, h * TEXT_TEX_SCALE);
+  updateTextTexture(txtInputEl.value);
+  txtInputEl.addEventListener("input", () => updateTextTexture(txtInputEl.value));
+
   // Easing setup — loadEasings() returns a name -> function map; the select
   // element lets the user choose which curve shapes every MOVE-phase
   // progress value (box rotation/zoom/light AND cursor path/scale/twist).
@@ -159,6 +405,7 @@ function setup() {
   masterPath = initialMasterPath.map((p) => ({ x: p.x, y: p.y }));
   rawCursorPresets = initialCursorPresets.map((p) => normalizeRawCursorPreset(p));
   presets = buildCursorPresetsFromRaw(rawCursorPresets);
+  cursorRuns = computeCursorRuns(presets);
 
   txtBoxPresetEl.value = stringifyBoxPresetRaw(rawBoxPreset);
   txtCursorPresetsEl.value = JSON.stringify(rawCursorPresets, null, 2);
@@ -217,7 +464,7 @@ function makeStepThumbImg(elapsedMs) {
   thumb.style.background = "#000";
   thumb.style.objectFit = "cover";
   thumb.style.borderRadius = "2px";
-  thumb.src = renderThumbnailDataURL(elapsedMs);
+  // thumb.src = renderThumbnailDataURL(elapsedMs);
   return thumb;
 }
 
@@ -245,11 +492,25 @@ function applyBoxPresets() {
   boxAnimStart = 0;
   boxIsHolding = false;
   playbackClockStart = 0;
-  isSeeking = false;
 
   buildTimeline();
   rebuildBoxStepButtons();
   rebuildCursorStepButtons();
+
+  // If a step thumbnail was selected before editing, jump back to that same
+  // frame using the freshly-applied values instead of resetting to the idle
+  // default view — this is what lets you keep tweaking one frame at a time.
+  if (lastSelectedStepKind === "box") {
+    showBoxStep(constrain(lastSelectedStepIndex, 0, boxPreset.length - 1));
+  } else if (lastSelectedStepKind === "cursor") {
+    showCursorStep(constrain(lastSelectedStepIndex, 0, presets.length - 1));
+  } else {
+    isSeeking = false;
+    // Keep the lighting sliders in sync with the (possibly edited) preset's
+    // first step, so the idle-state render (see draw()) immediately reflects
+    // whatever lighting values were just applied.
+    syncLightSlidersFrom(boxPreset[0]);
+  }
 }
 
 function resetBoxPresets() {
@@ -293,18 +554,27 @@ function applyCursorPresets() {
   cursorPresetErrorDivEl.textContent = "";
   rawCursorPresets = raw;
   presets = buildCursorPresetsFromRaw(rawCursorPresets);
+  cursorRuns = computeCursorRuns(presets);
 
   isCursorPlaying = false;
   isCursorFinished = false;
   cursorPlayIndex = 0;
   cursorStartTime = 0;
   liveCursorAngleRef.value = null;
-  isSeeking = false;
   cursorPlaybackClockStart = 0;
 
   buildTimeline();
   rebuildBoxStepButtons();
   rebuildCursorStepButtons();
+
+  // Same "stay on the selected frame" behavior as applyBoxPresets() above.
+  if (lastSelectedStepKind === "cursor") {
+    showCursorStep(constrain(lastSelectedStepIndex, 0, presets.length - 1));
+  } else if (lastSelectedStepKind === "box") {
+    showBoxStep(constrain(lastSelectedStepIndex, 0, boxPreset.length - 1));
+  } else {
+    isSeeking = false;
+  }
 }
 
 function resetCursorPresets() {
@@ -355,9 +625,18 @@ function lerpBoxPair(p1, p2, progress) {
     rotY: lerp(p1.rotY, p2.rotY, progress),
     rotZ: lerp(p1.rotZ, p2.rotZ, progress),
     zoom: lerp(p1.zoom, p2.zoom, progress),
-    lightX: lerp(p1.lightX, p2.lightX, progress),
-    lightY: lerp(p1.lightY, p2.lightY, progress),
-    intensity: lerp(p1.intensity, p2.intensity, progress),
+    ambientIntensity: lerp(p1.ambientIntensity, p2.ambientIntensity, progress),
+    dir1Intensity: lerp(p1.dir1Intensity, p2.dir1Intensity, progress),
+    dir1X: lerp(p1.dir1X, p2.dir1X, progress),
+    dir1Y: lerp(p1.dir1Y, p2.dir1Y, progress),
+    dir1Z: lerp(p1.dir1Z, p2.dir1Z, progress),
+    dir2Intensity: lerp(p1.dir2Intensity, p2.dir2Intensity, progress),
+    dir2X: lerp(p1.dir2X, p2.dir2X, progress),
+    dir2Y: lerp(p1.dir2Y, p2.dir2Y, progress),
+    dir2Z: lerp(p1.dir2Z, p2.dir2Z, progress),
+    glassAlpha: lerp(p1.glassAlpha, p2.glassAlpha, progress),
+    glassShininess: lerp(p1.glassShininess, p2.glassShininess, progress),
+    emissiveIntensity: lerp(p1.emissiveIntensity, p2.emissiveIntensity, progress),
   };
 }
 
@@ -416,14 +695,17 @@ function cursorValueFromSample(sample) {
   };
 }
 
-function lerpCursorPair(p1, p2, progress) {
-  return cursorValueFromSample({ p1, p2, t: progress });
-}
-
 // `ms` is a pure move duration, `hold` is a pure freeze afterward — same
 // model as the box. When frozen (p1 === p2), cursorValueFromSample naturally
 // falls back to the local path tangent for direction, since p2.pathIndex -
 // p1.pathIndex is zero.
+//
+// Unlike the box, MOVE phases are sampled via the run system
+// (computeCursorRuns / sampleRun): consecutive steps connected by hold === 0
+// are treated as one continuous eased motion instead of each leg getting
+// its own full ease-in/ease-out, which used to make the cursor decelerate
+// to near-zero speed at every interior waypoint — visually indistinguishable
+// from an actual hold even though hold was 0 the whole time.
 function computeCursorValueAtElapsed(elapsedMs) {
   if (!presets || presets.length === 0) return null;
   if (presets.length === 1) {
@@ -432,8 +714,41 @@ function computeCursorValueAtElapsed(elapsedMs) {
     return { x: p.x, y: p.y, dx: tan.dx, dy: tan.dy, scale: p.scale, angleTwist: p.angleTwist,
              rotX: p.rotX, rotY: p.rotY, rotZ: p.rotZ, cameraZoom: p.cameraZoom };
   }
+
   let segs = computeSegments(presets, false).segs;
-  return valueAtElapsedFromSegs(segs, presets, elapsedMs, lerpCursorPair);
+  let status = sceneStatusAtElapsed(segs, elapsedMs);
+  if (!status) return cursorValueFromSample({ p1: presets[0], p2: presets[0], t: 1 });
+
+  if (status.phase === "END") {
+    let last = presets[presets.length - 1];
+    return cursorValueFromSample({ p1: last, p2: last, t: 1 });
+  }
+
+  if (status.phase === "HOLD") {
+    let p = presets[status.index];
+    return cursorValueFromSample({ p1: p, p2: p, t: 1 });
+  }
+
+  // MOVE phase: locate the run this leg belongs to and ease across the
+  // whole run rather than just this one leg.
+  let run = findRunForIndex(cursorRuns, status.index - 1);
+  let p1, p2, t;
+
+  if (run) {
+    let legOffset = runElapsedOffset(run, presets, status.index - 1);
+    let elapsedInRun = status.phaseElapsed + legOffset;
+    let sample = sampleRun(run, presets, elapsedInRun);
+    p1 = sample.p1;
+    p2 = sample.p2;
+    t = sample.t;
+  } else {
+    p1 = presets[Math.max(0, status.index - 1)];
+    p2 = presets[status.index];
+    let progress = status.phaseDur > 0 ? constrain(status.phaseElapsed / status.phaseDur, 0, 1) : 1;
+    t = applyEasing(progress);
+  }
+
+  return cursorValueFromSample({ p1, p2, t });
 }
 
 function cursorTotalDurationMs() {
@@ -463,10 +778,11 @@ function showBoxStep(i) {
   boxPreviewStepIndex = i;
   seekElapsedMs = stepArrivalTime(boxTimelineBar.segs, i);
 
+  lastSelectedStepKind = "box";
+  lastSelectedStepIndex = i;
+
   let bv = computeBoxValueAtElapsed(seekElapsedMs);
-  sldLightXEl.value = bv.lightX;
-  sldLightYEl.value = bv.lightY;
-  sldIntensityEl.value = bv.intensity;
+  syncLightSlidersFrom(bv);
 
   updateBoxStepInfo(i);
 
@@ -475,14 +791,20 @@ function showBoxStep(i) {
     cursorPreviewStepIndex = cStatus.index;
     updateCursorStepInfo(cStatus.index);
   }
+
+  rebuildBoxStepButtons();
+  rebuildCursorStepButtons();
 }
 
 function updateBoxStepInfo(i) {
   let bp = boxPreset[i];
   let lines = [];
   lines.push(`BOX STEP ${i}`);
-  lines.push(`rotX ${bp.rotX.toFixed(2)}  rotY ${bp.rotY.toFixed(2)}  rotZ ${bp.rotZ.toFixed(2)}`);
-  lines.push(`zoom ${bp.zoom}  light (${bp.lightX}, ${bp.lightY})  intensity ${bp.intensity}`);
+  lines.push(`rotX ${bp.rotX.toFixed(2)}  rotY ${bp.rotY.toFixed(2)}  rotZ ${bp.rotZ.toFixed(2)}  zoom ${bp.zoom}`);
+  lines.push(`ambient ${bp.ambientIntensity}`);
+  lines.push(`dir1 int ${bp.dir1Intensity}  dir (${bp.dir1X.toFixed(2)}, ${bp.dir1Y.toFixed(2)}, ${bp.dir1Z.toFixed(2)})`);
+  lines.push(`dir2 int ${bp.dir2Intensity}  dir (${bp.dir2X.toFixed(2)}, ${bp.dir2Y.toFixed(2)}, ${bp.dir2Z.toFixed(2)})`);
+  lines.push(`glass alpha ${bp.glassAlpha}  shininess ${bp.glassShininess}  emissive ${bp.emissiveIntensity}`);
   lines.push(`ms ${bp.ms}  hold ${bp.hold}`);
   boxStepInfoDivEl.innerHTML = lines.join("<br>");
 }
@@ -510,6 +832,9 @@ function showCursorStep(i) {
   cursorPreviewStepIndex = i;
   seekElapsedMs = stepArrivalTime(cursorTimelineBar.segs, i);
 
+  lastSelectedStepKind = "cursor";
+  lastSelectedStepIndex = i;
+
   updateCursorStepInfo(i);
 
   let bStatus = sceneStatusAtElapsed(boxTimelineBar.segs, seekElapsedMs);
@@ -518,10 +843,11 @@ function showCursorStep(i) {
     updateBoxStepInfo(bStatus.index);
 
     let bv = computeBoxValueAtElapsed(seekElapsedMs);
-    sldLightXEl.value = bv.lightX;
-    sldLightYEl.value = bv.lightY;
-    sldIntensityEl.value = bv.intensity;
+    syncLightSlidersFrom(bv);
   }
+
+  rebuildBoxStepButtons();
+  rebuildCursorStepButtons();
 }
 
 function updateCursorStepInfo(i) {
@@ -929,6 +1255,7 @@ function toggleBoth() {
 
 function toggleBox() {
   isSeeking = false;
+  lastSelectedStepKind = null;
   if (!isAnimating && boxPreset.length >= 2) {
     isAnimating = true;
     isBoxFinished = false;
@@ -944,14 +1271,13 @@ function toggleBox() {
     boxAnimStart = 0;
     playbackClockStart = 0;
     let first = boxPreset[0];
-    sldLightXEl.value = first.lightX;
-    sldLightYEl.value = first.lightY;
-    sldIntensityEl.value = first.intensity;
+    syncLightSlidersFrom(first);
   }
 }
 
 function toggleCursor() {
   isSeeking = false;
+  lastSelectedStepKind = null;
   if (!isCursorPlaying && presets.length >= 2) {
     isCursorPlaying = true;
     isCursorFinished = false;
@@ -971,77 +1297,12 @@ function toggleCursor() {
   }
 }
 
-// Renders a single still frame of the combined scene (box + cursor) at the
-// given elapsed ms on the shared timeline into the offscreen thumbnail
-// buffer, and returns it as a data URL. Mirrors draw()'s logic but targets
-// `thumbBuffer` instead of the live canvas, and uses its own angle-ref so it
-// never disturbs the live cursor's smoothing state.
-function renderThumbnailDataURL(elapsedMs) {
-  if (!thumbBuffer) return "";
-  let buf = thumbBuffer;
-
-  buf.clear();
-  buf.background(0);
-
-  let bv = computeBoxValueAtElapsed(elapsedMs);
-
-  buf.camera(0, 0, bv.zoom, 0, 0, 0, 0, 1, 0);
-  buf.rotateX(bv.rotX);
-  buf.rotateY(bv.rotY);
-  buf.rotateZ(bv.rotZ);
-
-  buf.ambientLight(50);
-  buf.directionalLight(bv.intensity, bv.intensity, bv.intensity, bv.lightX, bv.lightY, 100);
-  let col = color(colorPickerEl.value);
-  buf.specularMaterial(red(col), green(col), blue(col));
-  buf.shininess(50);
-
-  buf.noStroke();
-  buf.fill(red(col), green(col), blue(col), 100);
-  drawExtrudedRoundedRect(buf, w, h, d, r);
-  buf.stroke(255, 10);
-  buf.noFill();
-  drawBorder(buf, w, h, d, r);
-
-  buf.push();
-  buf.fill(255);
-  buf.noStroke();
-  buf.textAlign(CENTER, CENTER);
-  buf.textSize(40);
-  buf.translate(0, 0, d / 2 + 1);
-  buf.text(txtInputEl.value, 0, 0);
-  buf.pop();
-
-  let cv = computeCursorValueAtElapsed(elapsedMs);
-  let cameraZoomFlag = cv ? !!cv.cameraZoom : false;
-  if (!cameraZoomFlag) {
-    buf.resetMatrix();
-    buf.camera();
-  }
-
-  buf.noLights();
-  buf.drawingContext.disable(buf.drawingContext.DEPTH_TEST);
-  buf.push();
-  buf.translate(-buf.width / 2, -buf.height / 2, 0);
-
-  thumbCursorAngleRef.value = null; // fresh snap, no smoothing carried over between thumbnails
-  if (cv) {
-    let cursorType = cursorTypeSelectEl ? cursorTypeSelectEl.value : "arrow";
-    drawCursorIcon(buf, thumbCursorAngleRef, cv.x, cv.y, cv.dx, cv.dy, cv.scale, cv.angleTwist, cv.rotX, cv.rotY, cv.rotZ, cursorType);
-  }
-
-  buf.pop();
-  buf.drawingContext.enable(buf.drawingContext.DEPTH_TEST);
-
-  return buf.elt.toDataURL();
-}
-
 function draw() {
   background(0);
   updateTimelinePlayheads();
 
   let targetRotX = 0, targetRotY = 0, targetRotZ = 0, targetZoom = boxPreset[0].zoom;
-  let targetLX = Number(sldLightXEl.value), targetLY = Number(sldLightYEl.value), targetInt = Number(sldIntensityEl.value);
+  let L = readLightSliders();
 
   if (isSeeking) {
     let bv = computeBoxValueAtElapsed(seekElapsedMs);
@@ -1049,12 +1310,8 @@ function draw() {
     targetRotY = bv.rotY;
     targetRotZ = bv.rotZ;
     targetZoom = bv.zoom;
-    targetLX = bv.lightX;
-    targetLY = bv.lightY;
-    targetInt = bv.intensity;
-    sldLightXEl.value = targetLX;
-    sldLightYEl.value = targetLY;
-    sldIntensityEl.value = targetInt;
+    L = bv;
+    syncLightSlidersFrom(L);
   } else if (isAnimating) {
     let elapsed = millis() - playbackClockStart;
     let totalDur = boxTotalDurationMs();
@@ -1068,27 +1325,28 @@ function draw() {
     targetRotY = v.rotY;
     targetRotZ = v.rotZ;
     targetZoom = v.zoom;
-    targetLX = v.lightX;
-    targetLY = v.lightY;
-    targetInt = v.intensity;
-    sldLightXEl.value = targetLX;
-    sldLightYEl.value = targetLY;
-    sldIntensityEl.value = targetInt;
+    L = v;
+    syncLightSlidersFrom(L);
   } else if (isBoxFinished) {
     let last = boxPreset[boxPreset.length - 1];
     targetRotX = last.rotX;
     targetRotY = last.rotY;
     targetRotZ = last.rotZ;
     targetZoom = last.zoom;
-    targetLX = last.lightX;
-    targetLY = last.lightY;
-    targetInt = last.intensity;
+    L = last;
+    syncLightSlidersFrom(L);
   } else {
+    // IDLE state (never played / stopped at the start). Mirrors
+    // rotX/rotY/rotZ/zoom above and pulls straight from the preset's first
+    // entry, keeping the sliders in sync with it, so edits made via the
+    // textarea + Apply show up immediately instead of only after Play.
     let first = boxPreset[0];
     targetRotX = first.rotX;
     targetRotY = first.rotY;
     targetRotZ = first.rotZ;
     targetZoom = first.zoom;
+    L = first;
+    syncLightSlidersFrom(L);
   }
 
   camera(0, 0, targetZoom, 0, 0, 0, 0, 1, 0);
@@ -1096,37 +1354,67 @@ function draw() {
   rotateY(targetRotY);
   rotateZ(targetRotZ);
 
-  ambientLight(50);
-  directionalLight(targetInt, targetInt, targetInt, targetLX, targetLY, 100);
+  ambientLight(L.ambientIntensity, L.ambientIntensity, L.ambientIntensity);
+  directionalLight(L.dir1Intensity, L.dir1Intensity, L.dir1Intensity, L.dir1X, L.dir1Y, L.dir1Z);
+  directionalLight(L.dir2Intensity, L.dir2Intensity, L.dir2Intensity, L.dir2X, L.dir2Y, L.dir2Z);
+
   let col = color(colorPickerEl.value);
   specularMaterial(red(col), green(col), blue(col));
-  shininess(50);
+  shininess(L.glassShininess);
 
+  // Drives the glassShader's edge-emissive rim-light strength this frame —
+  // see getEmissiveIntensity()/currentEmissiveIntensity near the top of the
+  // file for why a plain outer variable works as a live shader uniform here.
+  currentEmissiveIntensity = L.emissiveIntensity;
+
+  // Box: extruded rounded-rect model + glass Material Hook shader (built
+  // once in setup(), see boxModel / glassShader above), instead of the old
+  // drawExtrudedRoundedRect()/drawBorder() immediate-mode geometry.
   noStroke();
-  fill(red(col), green(col), blue(col), 100);
-  drawExtrudedRoundedRect(window, w, h, d, r);
-  stroke(255, 10);
-  noFill();
-  drawBorder(window, w, h, d, r);
-
+  fill(red(col), green(col), blue(col), L.glassAlpha);
   push();
-  fill(255);
-  noStroke();
-  textAlign(CENTER, CENTER);
-  textSize(40);
-  translate(0, 0, d / 2 + 1);
-  text(txtInputEl.value, 0, 0);
+  // extrudeContours() runs the model from z=0 to roughly z=(d+BOX_BEVEL), not
+  // symmetric about the origin like the old box was — recenter it here so it
+  // rotates the same way, and so the text plane's translate(0,0,d/2+1) below
+  // still lines up with its camera-facing cap.
+  translate(0, 0, -(d / 2 + BOX_BEVEL));
+  shader(glassShader);
+  model(boxModel);
+  resetShader();
   pop();
+
+  // Label texture: render the input text into an offscreen graphics buffer
+  // once (updateTextTexture, cached in textTexture / lastRenderedText, and
+  // refreshed on input), then texture a plane() with it in front of the box
+  // face — the same "text-to-texture" trick as texturing a button label,
+  // instead of calling text() directly inside the lit WEBGL scene.
+  if (txtInputEl.value !== lastRenderedText) updateTextTexture(txtInputEl.value);
+  push();
+  noStroke();
+  noLights();
+  texture(textTexture);
+  translate(0, 0, d / 2 + 1);
+  plane(w, h);
+  pop();
+  // restore lighting for anything drawn after the label (e.g. the light-direction lines below)
+  ambientLight(L.ambientIntensity, L.ambientIntensity, L.ambientIntensity);
+  directionalLight(L.dir1Intensity, L.dir1Intensity, L.dir1Intensity, L.dir1X, L.dir1Y, L.dir1Z);
+  directionalLight(L.dir2Intensity, L.dir2Intensity, L.dir2Intensity, L.dir2X, L.dir2Y, L.dir2Z);
 
   if (chkVisualizeEl.checked) {
     push();
-    stroke(255, 0, 0);
+    resetShader();
     strokeWeight(2);
-    line(targetLX, targetLY, 100, 0, 0, 0);
-    translate(targetLX, targetLY, 100);
-    fill(255, 0, 0);
-    noStroke();
-    sphere(10);
+
+    // Light 1 path (yellow)
+    stroke(255, 255, 0);
+    let l1Dir = createVector(L.dir1X, L.dir1Y, L.dir1Z).normalize().mult(-150);
+    line(0, 0, 0, l1Dir.x, l1Dir.y, l1Dir.z);
+
+    // Light 2 path (cyan)
+    stroke(0, 255, 255);
+    let l2Dir = createVector(L.dir2X, L.dir2Y, L.dir2Z).normalize().mult(-150);
+    line(0, 0, 0, l2Dir.x, l2Dir.y, l2Dir.z);
     pop();
   }
 
@@ -1183,6 +1471,9 @@ function draw() {
   drawingContext.enable(drawingContext.DEPTH_TEST);
 }
 
+// NOTE: no longer called by draw() — the box is now drawn via boxModel +
+// glassShader (see setup() and draw() above). Left here in case you want to
+// revert to the old flat immediate-mode box.
 function drawExtrudedRoundedRect(g, w, h, depth, r) {
   let halfW = w / 2, halfH = h / 2, halfD = depth / 2, steps = 40;
   for (let z of [-halfD, halfD]) {
@@ -1211,6 +1502,7 @@ function drawExtrudedRoundedRect(g, w, h, depth, r) {
   g.endShape();
 }
 
+// NOTE: no longer called by draw() — see note above drawExtrudedRoundedRect().
 function drawBorder(g, w, h, depth, r) {
   let halfW = w / 2, halfH = h / 2, halfD = depth / 2, steps = 40;
   for (let z of [-halfD, halfD]) {
@@ -1285,14 +1577,16 @@ function resolveBoxPresetJson(jsonArr) {
   });
 }
 
-function makeStepButton(index, elapsedMs, onClick) {
+function makeStepButton(index, elapsedMs, onClick, isSelected) {
   let btn = document.createElement("button");
   btn.className = "step-btn";
   btn.style.display = "flex";
   btn.style.flexDirection = "column";
   btn.style.alignItems = "center";
   btn.style.background = "transparent";
-  btn.style.border = "none";
+  btn.style.border = isSelected ? "2px solid #ff6f00" : "2px solid transparent";
+  btn.style.borderRadius = "4px";
+  btn.style.boxSizing = "border-box";
   btn.style.cursor = "pointer";
   btn.style.width = 80;
   btn.style.height = 80;
@@ -1318,7 +1612,7 @@ function makeStepButton(index, elapsedMs, onClick) {
   
   thumb.style.objectFit = "cover";
   thumb.style.borderRadius = "2px";
-  thumb.src = renderThumbnailDataURL(elapsedMs);
+  // thumb.src = renderThumbnailDataURL(elapsedMs);
   btn.appendChild(thumb);
 
   btn.addEventListener("click", onClick);
@@ -1334,7 +1628,8 @@ function rebuildBoxStepButtons() {
 
   for (let i = 0; i < boxPreset.length; i++) {
     let elapsedMs = boxTimelineBar ? stepArrivalTime(boxTimelineBar.segs, i) : 0;
-    boxStepBtnContainerEl.appendChild(makeStepButton(i, elapsedMs, () => showBoxStep(i)));
+    let isSelected = lastSelectedStepKind === "box" && i === lastSelectedStepIndex;
+    boxStepBtnContainerEl.appendChild(makeStepButton(i, elapsedMs, () => showBoxStep(i), isSelected));
   }
 }
 
@@ -1345,7 +1640,8 @@ function rebuildCursorStepButtons() {
 
   for (let i = 0; i < presets.length; i++) {
     let elapsedMs = cursorTimelineBar ? stepArrivalTime(cursorTimelineBar.segs, i) : 0;
-    cursorStepBtnContainerEl.appendChild(makeStepButton(i, elapsedMs, () => showCursorStep(i)));
+    let isSelected = lastSelectedStepKind === "cursor" && i === lastSelectedStepIndex;
+    cursorStepBtnContainerEl.appendChild(makeStepButton(i, elapsedMs, () => showCursorStep(i), isSelected));
   }
 }
 
@@ -1420,9 +1716,6 @@ function loadEasings() {
     Linear: linear,
   };
 }
-
-let easings;
-let easingSelect;
 
 function applyEasing(t) {
   let fn = easings && easingSelect ? easings[easingSelect.value] : null;
