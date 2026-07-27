@@ -997,7 +997,7 @@ function renderThumbnailDataURL(elapsedMs) {
   buf.shininess(50);
 
   buf.noStroke();
-  buf.fill(255, 100);
+  buf.fill(red(col), green(col), blue(col), 100);
   drawExtrudedRoundedRect(buf, w, h, d, r);
   buf.stroke(255, 10);
   buf.noFill();
@@ -1103,7 +1103,7 @@ function draw() {
   shininess(50);
 
   noStroke();
-  fill(255, 100);
+  fill(red(col), green(col), blue(col), 100);
   drawExtrudedRoundedRect(window, w, h, d, r);
   stroke(255, 10);
   noFill();
